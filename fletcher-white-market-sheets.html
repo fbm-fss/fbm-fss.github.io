@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Fletcher White Market</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+SETUP (Google Sheets backend)
+1. Create a NEW Google Sheet (or delete the old Users, Listings, Messages and Sessions tabs, because the columns changed).
+2. Extensions > Apps Script, paste in Code.gs (saved next to this file).
+3. Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone. Authorize (it asks for Sheets and Drive access), then copy the /exec URL.
+4. Paste that URL into API_URL near the bottom of this file, then open the page.
+5. Create the admin account FIRST by signing up as jaspytheliquid@gmail.com. Anyone who signs up with that email is admin.
+Redeploy (Deploy > Manage deployments > edit > New version) any time you change Code.gs.
+-->
+<style>
+:root{--chalk:#f7f8f5;--ink:#14213d;--blue:#2446d6;--coin:#e0a526;--line:#d9dde6;--mute:#5d6b86}
+*{box-sizing:border-box}
+body{margin:0;background:var(--chalk);color:var(--ink);font:16px/1.5 "Public Sans",system-ui,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque","Public Sans",sans-serif;margin:0;letter-spacing:-.01em}
+button,input,textarea{font:inherit}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--coin);outline-offset:2px}
+.awning{height:22px;background:repeating-linear-gradient(90deg,var(--blue) 0 36px,#fff 36px 72px);border-bottom:3px solid var(--ink)}
+header.top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;padding:14px 24px;border-bottom:1px solid var(--line);background:#fff}
+.brand{font:800 22px "Bricolage Grotesque",sans-serif}
+nav{display:flex;gap:4px;flex:1}
+nav button{background:none;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;color:var(--mute);font-weight:600}
+nav button.on{background:var(--ink);color:#fff}
+.bal{display:flex;align-items:center;gap:8px;font-weight:600}
+.coin{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--coin);color:var(--ink);font:800 11px "Bricolage Grotesque";border:2px solid var(--ink)}
+main{max-width:1000px;margin:0 auto;padding:28px 20px 60px}
+button.b,.card button,.form button,#thread button,.pk button{background:var(--blue);color:#fff;border:0;padding:9px 16px;border-radius:8px;font-weight:600;cursor:pointer}
+button.ghost{background:#fff!important;color:var(--ink)!important;border:1.5px solid var(--ink)!important}
+input,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff}
+input:focus,textarea:focus{border-color:var(--blue);outline:none}
+label{display:block;font-weight:600;font-size:14px;margin:12px 0 4px}
+/* auth */
+#auth{max-width:400px;margin:56px auto;padding:0 20px}
+#auth h1{font-size:40px;line-height:1.05;margin-bottom:8px}
+#auth p{color:var(--mute);margin:0 0 20px}
+.panel{background:#fff;border:1.5px solid var(--ink);border-radius:14px;padding:22px;box-shadow:5px 5px 0 var(--ink)}
+.panel .b{width:100%;margin-top:18px;padding:11px}
+.swap{background:none;border:0;color:var(--blue);cursor:pointer;margin-top:12px;font-weight:600;padding:0}
+.err{color:#b3261e;font-size:14px;min-height:20px;margin-top:10px}
+/* market */
+.head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:18px}
+.head h2{font-size:30px}
+details.sell{margin-bottom:22px}
+details.sell summary{cursor:pointer;font-weight:600;color:var(--blue)}
+.form{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:6px 18px 18px;margin-top:10px;max-width:520px}
+.form button{margin-top:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.card{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.card p{margin:0;color:var(--mute);flex:1;word-break:break-word}
+.meta{display:flex;justify-content:space-between;font-size:14px;color:var(--mute)}
+.price{font-weight:800;color:var(--ink)}
+.row{display:flex;gap:8px}
+.empty{color:var(--mute)}
+/* chats */
+.chatwrap{display:grid;grid-template-columns:260px 1fr;gap:16px;min-height:440px}
+.clist{background:#fff;border:1.5px solid var(--line);border-radius:12px;overflow:hidden}
+.clist button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 14px;cursor:pointer}
+.clist button.on{background:#e9edfb}
+.clist small{display:block;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#thread{background:#fff;border:1.5px solid var(--ink);border-radius:12px;display:flex;flex-direction:column;height:440px}
+#thread h3{padding:12px 16px;border-bottom:1px solid var(--line);font-size:18px}
+#msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.m{max-width:75%;padding:8px 12px;border-radius:14px 14px 14px 3px;background:#eef0f4;word-break:break-word}
+.m.me{align-self:flex-end;background:var(--blue);color:#fff;border-radius:14px 14px 3px 14px}
+#thread form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
+.nochat{display:grid;place-items:center;color:var(--mute);border:1.5px dashed var(--line);border-radius:12px}
+/* tokens */
+.tokhero{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.tokhero .coin{width:54px;height:54px;font-size:18px}
+.tokhero strong{font:800 40px "Bricolage Grotesque"}
+.packs{position:relative}
+.pk{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;filter:grayscale(1);opacity:.45;pointer-events:none}
+.pk div{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:18px}
+.pk b{font:800 28px "Bricolage Grotesque";display:block}
+.pk button{margin-top:12px;background:var(--mute)}
+.lock{position:absolute;inset:0;display:grid;place-items:center}
+.lock .panel{width:min(340px,92%)}
+.lock h3{font-size:20px;margin-bottom:4px}
+.lock p{margin:0 0 6px;color:var(--mute);font-size:14px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:10px;z-index:9}
+@media(max-width:700px){.chatwrap{grid-template-columns:1fr}.clist{max-height:170px;overflow:auto}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<style>
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.chips button{background:#fff;border:1.5px solid var(--line);border-radius:99px;padding:6px 14px;cursor:pointer;font-weight:600;color:var(--mute)}
+.chips button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.tag{font-size:12px;font-weight:600;background:#e9edfb;color:var(--blue);padding:2px 9px;border-radius:99px;align-self:flex-start}
+.card img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;background:#eef0f4}
+.card .noimg{aspect-ratio:4/3;border-radius:8px;background:#eef0f4;display:grid;place-items:center;color:var(--mute);font-size:14px}
+.pv{max-width:180px;border-radius:8px;margin-top:8px;display:block}
+.st{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;background:#e6f4ea;color:#1c6b32}
+.st.reported{background:#fdf0d5;color:#8a5a00}.st.refunded,.st.dismissed{background:#eef0f4;color:var(--mute)}
+.item{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.item small{display:block;color:var(--mute)}
+.item .row{flex-wrap:wrap}
+.item button,#notePanel button{background:var(--blue);color:#fff;border:0;padding:7px 12px;border-radius:8px;font-weight:600;cursor:pointer}
+.item button.red{background:#b3261e}
+h2.sub{font-size:22px;margin:28px 0 12px}
+#notePanel{margin-bottom:20px}
+#notePanel p{margin:6px 0}
+.alog{background:#fff;border:1.5px solid var(--ink);border-radius:12px;padding:12px;max-height:280px;overflow:auto;margin-bottom:10px}
+.alog div{margin:4px 0;word-break:break-word}
+</style>
+<body>
+<div class="awning"></div>
+
+<!-- SIGN IN -->
+<section id="auth" hidden>
+  <h1>The Fletcher White Market</h1>
+  <p>Buy and sell with FWM tokens. New accounts start with 50.</p>
+  <form class="panel" id="authForm">
+    <div id="nameRow" hidden><label for="name">Display name</label><input id="name" autocomplete="nickname"></div>
+    <label for="email">Email</label><input id="email" type="email" required autocomplete="email">
+    <label for="pw">Password</label><input id="pw" type="password" minlength="6" required autocomplete="current-password">
+    <button class="b" id="authBtn">Sign in</button>
+    <div class="err" id="aerr" role="alert"></div>
+  </form>
+  <button class="swap" id="swap">New here? Create an account</button>
+</section>
+
+<!-- APP -->
+<div id="app" hidden>
+  <header class="top">
+    <span class="brand">Fletcher White Market</span>
+    <nav>
+      <button data-v="market" class="on">Market</button>
+      <button data-v="chats">Messages</button>
+      <button data-v="orders">Orders</button>
+      <button data-v="tokens">Tokens</button>
+      <button data-v="admin" id="navAdmin" hidden>Admin</button>
+    </nav>
+    <button class="ghost b" id="bell">Alerts</button>
+    <span class="bal"><span class="coin">FWM</span><span id="bal">0</span><span id="who" style="color:var(--mute);font-weight:400"></span></span>
+    <button class="ghost b" id="out">Sign out</button>
+  </header>
+  <main>
+    <section id="notePanel" class="panel" hidden></section>
+
+    <section id="v-market">
+      <div class="head"><h2>Listings</h2></div>
+      <div class="chips" id="chips">
+        <button data-cat="all" class="on">All</button><button data-cat="information">Information</button>
+        <button data-cat="locks">Locks</button><button data-cat="lockers">Lockers</button><button data-cat="other">Other</button>
+      </div>
+      <details class="sell"><summary>Post an item</summary>
+        <form class="form" id="sellForm">
+          <label for="t">Title</label><input id="t" required maxlength="80">
+          <label for="cat">Category</label>
+          <select id="cat" required style="width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff">
+            <option value="">Choose one</option><option value="information">Information</option><option value="locks">Locks</option>
+            <option value="lockers">Lockers</option><option value="other">Other</option>
+          </select>
+          <label for="d">Description</label><textarea id="d" rows="3" maxlength="500"></textarea>
+          <label for="p">Price (FWM)</label><input id="p" type="number" min="1" step="1" required>
+          <label for="img">Photo of what it looks like</label><input id="img" type="file" accept="image/*">
+          <img id="pv" class="pv" alt="" hidden>
+          <button id="postBtn">Post listing</button>
+        </form>
+      </details>
+      <div class="grid" id="grid"></div>
+    </section>
+
+    <section id="v-chats" hidden>
+      <div class="head"><h2>Messages</h2></div>
+      <div class="chatwrap">
+        <div class="clist" id="clist"></div>
+        <div class="nochat" id="nochat">Pick a conversation, or tap Message on a listing.</div>
+        <div id="thread" hidden>
+          <h3 id="ttitle"></h3><div id="msgs"></div>
+          <form id="sendForm"><input id="mi" placeholder="Write a message" autocomplete="off"><button>Send</button></form>
+        </div>
+      </div>
+    </section>
+
+    <section id="v-orders" hidden>
+      <div class="head"><h2>Orders</h2></div>
+      <div id="orders"></div>
+    </section>
+
+    <section id="v-tokens" hidden>
+      <div class="tokhero"><span class="coin">FWM</span><div><strong id="bal2">0</strong><div style="color:var(--mute)">FWM tokens in your wallet</div></div></div>
+      <h2 style="margin-bottom:14px">Buy tokens</h2>
+      <div class="packs">
+        <div class="pk">
+          <div><b>100 FWM</b>Starter pack<br><button disabled>Locked</button></div>
+          <div><b>500 FWM</b>Market pack<br><button disabled>Locked</button></div>
+          <div><b>1,000 FWM</b>Stall pack<br><button disabled>Locked</button></div>
+        </div>
+        <div class="lock">
+          <form class="panel" id="lockForm">
+            <h3>Token sales are locked</h3>
+            <p>Enter the passcode to unlock purchases.</p>
+            <label for="pc">Passcode</label><input id="pc" type="password" autocomplete="off">
+            <button class="b">Unlock</button>
+            <div class="err" id="perr" role="alert"></div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section id="v-admin" hidden>
+      <div class="head"><h2>Admin panel</h2></div>
+      <div id="adm"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+// Paste your Apps Script Web app URL (ends in /exec) here
+const API_URL = "https://script.google.com/macros/s/AKfycbzwb0hJKdWuO73ObCD0TjAga-3id4bjFd1Vw5BSkPBVlz_fUPL_eF_8vrFrKxkNpiw/exec";
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+               set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }};
+let token = store.get('fwm_token'), me = null, L = {}, M = [], ORD = [], NOTES = [], ADM = null;
+let active = null, timer = null, mode = 'in', cat = 'all', admChat = null, pending = '', seen = null, view = 'market';
+const sigs = {};
+const CATNAME = {information: 'Information', locks: 'Locks', lockers: 'Lockers', other: 'Other'};
+const fmt = d => { try { return new Date(d).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}); } catch (e) { return ''; } };
+
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),3600)}
+async function api(action, p = {}) {
+  const r = await fetch(API_URL, {method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({action, token, ...p})});
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error);
+  return j.data;
+}
+
+/* ---------- auth ---------- */
+$('#swap').onclick = () => {
+  mode = mode === 'in' ? 'up' : 'in';
+  $('#nameRow').hidden = mode === 'in';
+  $('#authBtn').textContent = mode === 'in' ? 'Sign in' : 'Create account';
+  $('#swap').textContent = mode === 'in' ? 'New here? Create an account' : 'Have an account? Sign in';
+  $('#aerr').textContent = '';
+};
+$('#authForm').onsubmit = async e => {
+  e.preventDefault(); $('#aerr').textContent = ''; $('#authBtn').disabled = true;
+  try {
+    const d = await api(mode === 'up' ? 'signup' : 'login', {name: $('#name').value, email: $('#email').value, password: $('#pw').value});
+    token = d.token; store.set('fwm_token', token); me = d.user; start();
+  } catch (x) { $('#aerr').textContent = x.message; }
+  $('#authBtn').disabled = false;
+};
+function signOut(msg){
+  clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null;
+  Object.keys(sigs).forEach(k => delete sigs[k]);
+  store.set('fwm_token', null);
+  $('#app').hidden = true; $('#auth').hidden = false; $('#pw').value = '';
+  if (typeof msg === 'string') $('#aerr').textContent = msg;
+}
+$('#out').onclick = () => signOut();
+function start(){
+  $('#auth').hidden = true; $('#app').hidden = false; go('market');
+  refresh(); clearInterval(timer); timer = setInterval(refresh, 5000);
+}
+async function refresh(){
+  try {
+    const d = await api('sync');
+    me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages; ORD = d.orders; NOTES = d.notes; ADM = d.admin;
+    const unread = NOTES.filter(n => n.read !== 'yes');
+    if (seen) unread.filter(n => !seen.has(n.id)).forEach(n => toast(n.text));
+    seen = new Set(NOTES.map(n => n.id));
+    paint();
+  } catch (x) { if (/session|banned/i.test(x.message)) signOut(x.message); }
+}
+
+/* ---------- navigation ---------- */
+function go(v){
+  view = v;
+  ['market','chats','orders','tokens','admin'].forEach(k => $('#v-'+k).hidden = k !== v);
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => go(b.dataset.v));
+$('#bell').onclick = async () => {
+  const p = $('#notePanel'); p.hidden = !p.hidden;
+  if (!p.hidden && NOTES.some(n => n.read !== 'yes')) { try { await api('readNotes'); refresh(); } catch (x) {} }
+};
+$('#chips').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  cat = b.dataset.cat;
+  document.querySelectorAll('#chips button').forEach(x => x.classList.toggle('on', x === b));
+  paint();
+};
+
+/* ---------- paint ---------- */
+function region(k, v, f){ const s = JSON.stringify(v); if (sigs[k] !== s) { sigs[k] = s; f(); } }
+function paint(){
+  $('#bal').textContent = $('#bal2').textContent = me.tokens;
+  $('#who').textContent = me.name;
+  $('#navAdmin').hidden = !me.admin;
+  const unread = NOTES.filter(n => n.read !== 'yes').length;
+  $('#bell').textContent = unread ? `Alerts (${unread})` : 'Alerts';
+  region('l', [L, me.id, me.admin, cat], renderListings);
+  region('m', [M.length, M.length ? M[M.length-1].id : '', active && active.id], renderChats);
+  region('o', ORD, renderOrders);
+  region('n', NOTES, renderNotes);
+  if (me.admin) region('a', [ADM, admChat], renderAdmin);
+}
+function renderListings(){
+  const a = Object.values(L).filter(l => cat === 'all' || l.category === cat);
+  $('#grid').innerHTML = a.length ? a.map(l => `
+    <article class="card">
+      ${l.image ? `<img src="https://drive.google.com/thumbnail?id=${esc(l.image)}&sz=w600" alt="${esc(l.title)}" loading="lazy">` : '<div class="noimg">No photo</div>'}
+      <span class="tag">${esc(CATNAME[l.category] || 'Other')}</span>
+      <h3>${esc(l.title)}</h3><p>${esc(l.desc)}</p>
+      <div class="meta"><span class="price">${l.price} FWM</span><span>${esc(l.sellerName)}</span></div>
+      <div class="row">
+        ${l.sellerId === me.id ? '<em class="meta">Your listing</em>'
+          : `<button data-act="buy" data-id="${l.id}">Buy</button><button class="ghost" data-act="msg" data-id="${l.id}">Message</button>`}
+        ${me.admin ? `<button class="red" style="background:#b3261e" data-act="delist" data-id="${l.id}">Delist</button>` : ''}
+      </div>
+    </article>`).join('') : '<p class="empty">Nothing here yet. Post the first one.</p>';
+}
+function renderNotes(){
+  $('#notePanel').innerHTML = '<h3 style="margin-bottom:8px">Alerts</h3>' + (NOTES.length
+    ? NOTES.map(n => `<p>${n.read !== 'yes' ? '<strong>New:</strong> ' : ''}${esc(n.text)} <small style="color:var(--mute)">${fmt(n.created)}</small></p>`).join('')
+    : '<p class="empty">No alerts yet.</p>');
+}
+function renderOrders(){
+  const row = o => {
+    const buyer = o.buyerId === me.id;
+    return `<div class="item"><div><strong>${esc(o.title)}</strong> <span class="st ${o.status}">${o.status}</span>
+      <small>${buyer ? 'Bought from ' + esc(o.sellerName) : 'Sold to ' + esc(o.buyerName)} for ${o.price} FWM, ${fmt(o.created)}</small></div>
+      ${buyer && o.status === 'complete' ? `<button class="red" data-act="report" data-id="${o.id}">Report a scam</button>` : ''}</div>`;
+  };
+  const buys = ORD.filter(o => o.buyerId === me.id), sells = ORD.filter(o => o.sellerId === me.id);
+  $('#orders').innerHTML = '<h2 class="sub" style="margin-top:0">Purchases</h2>' + (buys.map(row).join('') || '<p class="empty">You have not bought anything yet.</p>')
+    + '<h2 class="sub">Sales</h2>' + (sells.map(row).join('') || '<p class="empty">You have not sold anything yet.</p>');
+}
+
+/* ---------- admin ---------- */
+function adminChats(){
+  const g = {};
+  ADM.messages.forEach(m => {
+    const x = g[m.chatId] || (g[m.chatId] = {id: m.chatId, names: {}, n: 0});
+    x.names[m.from] = m.fromName; x.names[m.to] = m.toName; x.n++; x.last = m.created;
+  });
+  return Object.values(g).sort((a, b) => String(b.last).localeCompare(String(a.last)));
+}
+function renderAdmin(){
+  if (!ADM) return;
+  const open = ADM.reports.filter(r => r.status === 'open'), done = ADM.reports.filter(r => r.status !== 'open');
+  const chats = adminChats();
+  let html = '<h2 class="sub" style="margin-top:0">Scam reports</h2>' + (open.map(r => `
+    <div class="item"><div><strong>${esc(r.title)}</strong> (${r.price} FWM)
+      <small>${esc(r.buyerName)} reported ${esc(r.sellerName)}: ${esc(r.reason)}</small></div>
+      <div class="row"><button data-act="refund" data-id="${r.id}">Refund buyer</button>
+      <button class="ghost" data-act="dismiss" data-id="${r.id}">Dismiss</button>
+      <button class="red" data-act="ban" data-uid="${r.sellerId}" data-on="1">Ban seller</button></div></div>`).join('') || '<p class="empty">No open reports.</p>');
+  if (done.length) html += `<p class="empty">${done.length} closed report${done.length > 1 ? 's' : ''}: ` + done.slice(0, 5).map(r => `${esc(r.title)} (${r.status})`).join(', ') + '</p>';
+  html += '<h2 class="sub">People</h2>' + ADM.users.map(u => `
+    <div class="item"><div><strong>${esc(u.name)}</strong>${u.admin ? ' (admin)' : ''}${u.banned ? ' <span class="st reported">banned</span>' : ''}
+      <small>${esc(u.email)}, ${u.tokens} FWM</small></div>
+      <div class="row"><button data-act="give" data-uid="${u.id}" data-name="${esc(u.name)}">Give tokens</button>
+      ${u.admin ? '' : `<button class="${u.banned ? '' : 'red'}" data-act="ban" data-uid="${u.id}" data-on="${u.banned ? '' : '1'}">${u.banned ? 'Unban' : 'Ban'}</button>`}</div></div>`).join('');
+  html += '<h2 class="sub">All chats</h2>' + (chats.map(c => `
+    <div class="item"><div><strong>${esc(Object.values(c.names).join(' and '))}</strong><small>${c.n} message${c.n > 1 ? 's' : ''}, last ${fmt(c.last)}</small></div>
+      <div class="row"><button class="ghost" data-act="viewchat" data-id="${c.id}">View</button>
+      <button class="red" data-act="delchat" data-id="${c.id}">Delete chat</button></div></div>`).join('') || '<p class="empty">No chats yet.</p>');
+  if (admChat) {
+    const ms = ADM.messages.filter(m => m.chatId === admChat);
+    html += '<div class="alog">' + (ms.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)}</div>`).join('') || 'This chat is empty.') + '</div>';
+  }
+  $('#adm').innerHTML = html;
+}
+
+/* ---------- actions ---------- */
+document.body.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const d = b.dataset;
+  try {
+    switch (d.act) {
+      case 'buy': {
+        const l = L[d.id]; if (!l || !confirm(`Buy "${l.title}" for ${l.price} FWM?`)) return;
+        await api('buy', {id: d.id}); toast('Purchased. The seller has been notified. Message them to arrange delivery.'); break;
+      }
+      case 'msg': { const l = L[d.id]; if (l) { go('chats'); showChat(l.sellerId, l.sellerName); } return; }
+      case 'delist': if (!confirm('Delist this item?')) return; await api('delist', {id: d.id}); toast('Delisted.'); break;
+      case 'report': {
+        const reason = prompt('What went wrong? The admin will review your report.'); if (!reason) return;
+        await api('report', {orderId: d.id, reason}); toast('Reported. An admin will review it.'); break;
+      }
+      case 'refund': if (!confirm('Refund the buyer? The tokens come out of the seller.')) return; await api('resolveReport', {id: d.id, decision: 'refund'}); break;
+      case 'dismiss': await api('resolveReport', {id: d.id, decision: 'dismiss'}); break;
+      case 'ban': if (d.on && !confirm('Ban this person and delist their items?')) return; await api('ban', {userId: d.uid, banned: !!d.on}); break;
+      case 'give': {
+        const n = prompt(`How many FWM tokens should ${d.name} get?`); if (!n) return;
+        await api('giveTokens', {userId: d.uid, amount: n}); toast('Tokens sent.'); break;
+      }
+      case 'viewchat': admChat = d.id; paint(); return;
+      case 'delchat': if (!confirm('Delete this whole chat for both people?')) return; if (admChat === d.id) admChat = null; await api('deleteChat', {chatId: d.id}); break;
+    }
+    refresh();
+  } catch (x) { toast(x.message); refresh(); }
+});
+
+/* ---------- listing form with photo ---------- */
+function readImage(file){
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, 800 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', .82));
+    };
+    img.onerror = () => rej(new Error('That file is not a readable image.'));
+    img.src = url;
+  });
+}
+$('#img').onchange = async e => {
+  pending = ''; $('#pv').hidden = true;
+  const f = e.target.files[0]; if (!f) return;
+  try { pending = await readImage(f); $('#pv').src = pending; $('#pv').hidden = false; } catch (x) { toast(x.message); e.target.value = ''; }
+};
+$('#sellForm').onsubmit = async e => {
+  e.preventDefault(); $('#postBtn').disabled = true; $('#postBtn').textContent = 'Posting...';
+  try {
+    await api('post', {title: $('#t').value, category: $('#cat').value, desc: $('#d').value, price: $('#p').value, image: pending});
+    e.target.reset(); pending = ''; $('#pv').hidden = true; e.target.closest('details').open = false; toast('Listing posted.'); refresh();
+  } catch (x) { toast(x.message); }
+  $('#postBtn').disabled = false; $('#postBtn').textContent = 'Post listing';
+};
+
+/* ---------- chat ---------- */
+const cid = (a, b) => [a, b].sort().join('_');
+function convos(){
+  const map = {};
+  M.forEach(m => {
+    const o = m.from === me.id ? {id: m.to, name: m.toName} : {id: m.from, name: m.fromName};
+    map[o.id] = {...o, last: m.text, at: m.created};
+  });
+  if (active && !map[active.id]) map[active.id] = {...active, last: '', at: '9999'};
+  return Object.values(map).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+function showChat(id, name){ active = {id, name}; delete sigs.m; paint(); }
+function renderChats(){
+  const cs = convos();
+  $('#clist').innerHTML = cs.length ? cs.map(c => `<button data-id="${c.id}" data-name="${esc(c.name)}" class="${active && c.id === active.id ? 'on' : ''}">
+    <strong>${esc(c.name)}</strong><small>${esc(c.last || 'No messages yet')}</small></button>`).join('')
+    : '<p class="empty" style="padding:14px">No conversations yet.</p>';
+  $('#clist').querySelectorAll('button').forEach(b => b.onclick = () => showChat(b.dataset.id, b.dataset.name));
+  $('#nochat').hidden = !!active; $('#thread').hidden = !active;
+  if (!active) return;
+  $('#ttitle').textContent = active.name;
+  const id = cid(me.id, active.id), box = $('#msgs');
+  box.innerHTML = M.filter(m => m.chatId === id).map(m => `<div class="m ${m.from === me.id ? 'me' : ''}">${esc(m.text)}</div>`).join('');
+  box.scrollTop = box.scrollHeight;
+}
+$('#sendForm').onsubmit = async e => {
+  e.preventDefault();
+  const t = $('#mi').value.trim(); if (!t || !active) return;
+  $('#mi').value = '';
+  try { await api('send', {to: active.id, text: t}); refresh(); } catch (x) { toast(x.message); }
+};
+
+/* ---------- token shop (locked: there is no valid passcode and no code that grants tokens) ---------- */
+$('#lockForm').onsubmit = e => {
+  e.preventDefault();
+  $('#pc').value = '';
+  $('#perr').textContent = 'That passcode is not valid. Token sales are locked.';
+};
+
+/* ---------- boot ---------- */
+if (token) { api('sync').then(() => start()).catch(() => signOut()); } else { $('#auth').hidden = false; }
+</script>
+</body>
+</html>
