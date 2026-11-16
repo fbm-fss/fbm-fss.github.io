@@ -445,7 +445,13 @@ document.body.addEventListener('click', e => {
       const n = prompt(`How many FWM tokens should ${d.name} get?`); if (!n) return;
       return run('Sending tokens...', async () => { await api('giveTokens', {userId: d.uid, amount: n}); toast('Tokens sent.'); });
     }
-    case 'closenotes': $('#notePanel').hidden = true; return;
+    case 'closenotes': {
+      $('#notePanel').hidden = true;
+      if (!NOTES.length) return;
+      const upTo = NOTES[0].created; NOTES = []; delete sigs.n; paint();
+      api('clearNotes', {upTo}).then(refresh).catch(x => { toast(x.message); refresh(); });
+      return;
+    }
     case 'viewchat': admChat = d.id; paint(); return;
     case 'delchat': if (!confirm('Delete this whole chat for both people?')) return; if (admChat === d.id) admChat = null; return run('Deleting chat...', () => api('deleteChat', {chatId: d.id}));
   }
