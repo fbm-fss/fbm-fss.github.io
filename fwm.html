@@ -109,9 +109,20 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 #notePanel p{margin:6px 0}
 .alog{background:#fff;border:1.5px solid var(--ink);border-radius:12px;padding:12px;max-height:280px;overflow:auto;margin-bottom:10px}
 .alog div{margin:4px 0;word-break:break-word}
+.toast{z-index:40}
+#loading{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(247,248,245,.92)}
+.lbox{background:#fff;border:1.5px solid var(--ink);border-radius:14px;box-shadow:5px 5px 0 var(--ink);padding:26px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;max-width:320px;text-align:center}
+.lbox strong{font:800 20px "Bricolage Grotesque",sans-serif}
+#lhint{color:var(--mute);font-size:14px;min-height:20px}
+.spin{width:44px;height:44px;border-radius:50%;border:5px solid #dbe2fb;border-top-color:var(--blue);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
 </style>
 <body>
 <div class="awning"></div>
+<div id="loading" hidden role="status" aria-live="polite">
+  <div class="lbox"><div class="spin"></div><strong id="ltext">Loading...</strong><span id="lhint"></span></div>
+</div>
 
 <!-- SIGN IN -->
 <section id="auth" hidden>
@@ -236,6 +247,20 @@ async function api(action, p = {}) {
   return j.data;
 }
 
+let loadTimer;
+function showLoad(msg, hint = ''){
+  $('#ltext').textContent = msg; $('#lhint').textContent = hint; $('#loading').hidden = false;
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => { $('#lhint').textContent = 'Still working. The Google Sheet can take a few seconds to respond.'; }, 5000);
+}
+function hideLoad(){ clearTimeout(loadTimer); $('#loading').hidden = true; }
+async function run(msg, fn){
+  showLoad(msg);
+  try { await fn(); applySync(await api('sync')); }
+  catch (x) { toast(x.message); try { applySync(await api('sync')); } catch (y) {} }
+  hideLoad();
+}
+
 /* ---------- auth ---------- */
 $('#swap').onclick = () => {
   mode = mode === 'in' ? 'up' : 'in';
@@ -246,11 +271,13 @@ $('#swap').onclick = () => {
 };
 $('#authForm').onsubmit = async e => {
   e.preventDefault(); $('#aerr').textContent = ''; $('#authBtn').disabled = true;
+  showLoad(mode === 'up' ? 'Creating your account...' : 'Signing you in...', 'The first load can take a few seconds.');
   try {
     const d = await api(mode === 'up' ? 'signup' : 'login', {name: $('#name').value, email: $('#email').value, password: $('#pw').value});
-    token = d.token; store.set('fwm_token', token); me = d.user; start();
+    token = d.token; store.set('fwm_token', token); me = d.user;
+    applySync(await api('sync')); start();
   } catch (x) { $('#aerr').textContent = x.message; }
-  $('#authBtn').disabled = false;
+  hideLoad(); $('#authBtn').disabled = false;
 };
 function signOut(msg){
   clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null;
@@ -262,17 +289,18 @@ function signOut(msg){
 $('#out').onclick = () => signOut();
 function start(){
   $('#auth').hidden = true; $('#app').hidden = false; go('market');
-  refresh(); clearInterval(timer); timer = setInterval(refresh, 5000);
+  clearInterval(timer); timer = setInterval(refresh, 5000);
+}
+function applySync(d){
+  me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages; ORD = d.orders; NOTES = d.notes; ADM = d.admin;
+  const unread = NOTES.filter(n => n.read !== 'yes');
+  if (seen) unread.filter(n => !seen.has(n.id)).forEach(n => toast(n.text));
+  seen = new Set(NOTES.map(n => n.id));
+  paint();
 }
 async function refresh(){
-  try {
-    const d = await api('sync');
-    me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages; ORD = d.orders; NOTES = d.notes; ADM = d.admin;
-    const unread = NOTES.filter(n => n.read !== 'yes');
-    if (seen) unread.filter(n => !seen.has(n.id)).forEach(n => toast(n.text));
-    seen = new Set(NOTES.map(n => n.id));
-    paint();
-  } catch (x) { if (/session|banned/i.test(x.message)) signOut(x.message); }
+  try { applySync(await api('sync')); }
+  catch (x) { if (/session|banned/i.test(x.message)) signOut(x.message); }
 }
 
 /* ---------- navigation ---------- */
@@ -376,33 +404,30 @@ function renderAdmin(){
 }
 
 /* ---------- actions ---------- */
-document.body.addEventListener('click', async e => {
+document.body.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const d = b.dataset;
-  try {
-    switch (d.act) {
-      case 'buy': {
-        const l = L[d.id]; if (!l || !confirm(`Buy "${l.title}" for ${l.price} FWM?`)) return;
-        await api('buy', {id: d.id}); toast('Purchased. The seller has been notified. Message them to arrange delivery.'); break;
-      }
-      case 'msg': { const l = L[d.id]; if (l) { go('chats'); showChat(l.sellerId, l.sellerName); } return; }
-      case 'delist': if (!confirm('Delist this item?')) return; await api('delist', {id: d.id}); toast('Delisted.'); break;
-      case 'report': {
-        const reason = prompt('What went wrong? The admin will review your report.'); if (!reason) return;
-        await api('report', {orderId: d.id, reason}); toast('Reported. An admin will review it.'); break;
-      }
-      case 'refund': if (!confirm('Refund the buyer? The tokens come out of the seller.')) return; await api('resolveReport', {id: d.id, decision: 'refund'}); break;
-      case 'dismiss': await api('resolveReport', {id: d.id, decision: 'dismiss'}); break;
-      case 'ban': if (d.on && !confirm('Ban this person and delist their items?')) return; await api('ban', {userId: d.uid, banned: !!d.on}); break;
-      case 'give': {
-        const n = prompt(`How many FWM tokens should ${d.name} get?`); if (!n) return;
-        await api('giveTokens', {userId: d.uid, amount: n}); toast('Tokens sent.'); break;
-      }
-      case 'viewchat': admChat = d.id; paint(); return;
-      case 'delchat': if (!confirm('Delete this whole chat for both people?')) return; if (admChat === d.id) admChat = null; await api('deleteChat', {chatId: d.id}); break;
+  switch (d.act) {
+    case 'buy': {
+      const l = L[d.id]; if (!l || !confirm(`Buy "${l.title}" for ${l.price} FWM?`)) return;
+      return run('Processing your purchase...', async () => { await api('buy', {id: d.id}); toast('Purchased. The seller has been notified. Message them to arrange delivery.'); });
     }
-    refresh();
-  } catch (x) { toast(x.message); refresh(); }
+    case 'msg': { const l = L[d.id]; if (l) { go('chats'); showChat(l.sellerId, l.sellerName); } return; }
+    case 'delist': if (!confirm('Delist this item?')) return; return run('Delisting item...', async () => { await api('delist', {id: d.id}); toast('Delisted.'); });
+    case 'report': {
+      const reason = prompt('What went wrong? The admin will review your report.'); if (!reason) return;
+      return run('Sending your report...', async () => { await api('report', {orderId: d.id, reason}); toast('Reported. An admin will review it.'); });
+    }
+    case 'refund': if (!confirm('Refund the buyer? The tokens come out of the seller.')) return; return run('Refunding the buyer...', () => api('resolveReport', {id: d.id, decision: 'refund'}));
+    case 'dismiss': return run('Closing the report...', () => api('resolveReport', {id: d.id, decision: 'dismiss'}));
+    case 'ban': if (d.on && !confirm('Ban this person and delist their items?')) return; return run(d.on ? 'Banning...' : 'Unbanning...', () => api('ban', {userId: d.uid, banned: !!d.on}));
+    case 'give': {
+      const n = prompt(`How many FWM tokens should ${d.name} get?`); if (!n) return;
+      return run('Sending tokens...', async () => { await api('giveTokens', {userId: d.uid, amount: n}); toast('Tokens sent.'); });
+    }
+    case 'viewchat': admChat = d.id; paint(); return;
+    case 'delchat': if (!confirm('Delete this whole chat for both people?')) return; if (admChat === d.id) admChat = null; return run('Deleting chat...', () => api('deleteChat', {chatId: d.id}));
+  }
 });
 
 /* ---------- listing form with photo ---------- */
@@ -424,13 +449,12 @@ $('#img').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   try { pending = await readImage(f); $('#pv').src = pending; $('#pv').hidden = false; } catch (x) { toast(x.message); e.target.value = ''; }
 };
-$('#sellForm').onsubmit = async e => {
-  e.preventDefault(); $('#postBtn').disabled = true; $('#postBtn').textContent = 'Posting...';
-  try {
+$('#sellForm').onsubmit = e => {
+  e.preventDefault(); const f = e.target;
+  return run(pending ? 'Posting your listing... photos take a little longer.' : 'Posting your listing...', async () => {
     await api('post', {title: $('#t').value, category: $('#cat').value, desc: $('#d').value, price: $('#p').value, image: pending});
-    e.target.reset(); pending = ''; $('#pv').hidden = true; e.target.closest('details').open = false; toast('Listing posted.'); refresh();
-  } catch (x) { toast(x.message); }
-  $('#postBtn').disabled = false; $('#postBtn').textContent = 'Post listing';
+    f.reset(); pending = ''; $('#pv').hidden = true; f.closest('details').open = false; toast('Listing posted.');
+  });
 };
 
 /* ---------- chat ---------- */
@@ -462,7 +486,10 @@ $('#sendForm').onsubmit = async e => {
   e.preventDefault();
   const t = $('#mi').value.trim(); if (!t || !active) return;
   $('#mi').value = '';
-  try { await api('send', {to: active.id, text: t}); refresh(); } catch (x) { toast(x.message); }
+  M.push({id: 'tmp' + Date.now(), chatId: cid(me.id, active.id), from: me.id, fromName: me.name, to: active.id, toName: active.name, text: t, created: new Date().toISOString()});
+  delete sigs.m; paint();
+  try { await api('send', {to: active.id, text: t}); } catch (x) { toast(x.message); }
+  refresh();
 };
 
 /* ---------- token shop (locked: there is no valid passcode and no code that grants tokens) ---------- */
@@ -473,7 +500,15 @@ $('#lockForm').onsubmit = e => {
 };
 
 /* ---------- boot ---------- */
-if (token) { api('sync').then(() => start()).catch(() => signOut()); } else { $('#auth').hidden = false; }
+if (token) {
+  showLoad('Opening the market...', 'The first load can take a few seconds.');
+  api('sync').then(d => { applySync(d); start(); })
+    .catch(x => {
+      if (/session|banned/i.test(x.message)) signOut(x.message);
+      else { $('#auth').hidden = false; $('#aerr').textContent = 'Could not reach the market. Check your connection and API_URL, then reload.'; }
+    })
+    .finally(hideLoad);
+} else { $('#auth').hidden = false; }
 </script>
 </body>
 </html>
