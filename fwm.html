@@ -251,7 +251,7 @@ let loadTimer;
 function showLoad(msg, hint = ''){
   $('#ltext').textContent = msg; $('#lhint').textContent = hint; $('#loading').hidden = false;
   clearTimeout(loadTimer);
-  loadTimer = setTimeout(() => { $('#lhint').textContent = 'Still working. The Google Sheet can take a few seconds to respond.'; }, 5000);
+  loadTimer = setTimeout(() => { $('#lhint').textContent = 'Still working. The Google Sheet can take a few seconds to respond. If it takes more than 20 seconds, reload.'; }, 5000);
 }
 function hideLoad(){ clearTimeout(loadTimer); $('#loading').hidden = true; }
 async function run(msg, fn){
