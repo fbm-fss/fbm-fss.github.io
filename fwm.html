@@ -247,13 +247,32 @@ async function api(action, p = {}) {
   return j.data;
 }
 
-let loadTimer;
+let loadTimer, loadWatch;
 function showLoad(msg, hint = ''){
   $('#ltext').textContent = msg; $('#lhint').textContent = hint; $('#loading').hidden = false;
-  clearTimeout(loadTimer);
-  loadTimer = setTimeout(() => { $('#lhint').textContent = 'Still working. The Google Sheet can take a few seconds to respond. If it takes more than 20 seconds, reload.'; }, 5000);
+  clearTimeout(loadTimer); clearTimeout(loadWatch);
+  loadTimer = setTimeout(() => { $('#lhint').textContent = 'Still working. The Google Sheet can take a few seconds to respond.'; }, 5000);
+  loadWatch = setTimeout(stuck, 20000);
 }
-function hideLoad(){ clearTimeout(loadTimer); $('#loading').hidden = true; }
+function hideLoad(){ clearTimeout(loadTimer); clearTimeout(loadWatch); $('#loading').hidden = true; }
+// Loading for 20+ seconds: clear caches and reload (at most twice, so a real outage can't loop forever)
+async function stuck(){
+  let n = 0;
+  try { n = +sessionStorage.getItem('fwm_r') || 0; } catch (e) {}
+  if (n >= 2) {
+    hideLoad();
+    const m = 'Still cannot reach the market. Check your internet connection and the API_URL, then try again.';
+    if ($('#app').hidden) { $('#auth').hidden = false; $('#aerr').textContent = m; } else toast(m);
+    return;
+  }
+  try { sessionStorage.setItem('fwm_r', n + 1); } catch (e) {}
+  $('#ltext').textContent = 'Refreshing...'; $('#lhint').textContent = 'Clearing the cache and reloading the page.';
+  try {
+    if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+    if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+  } catch (e) {}
+  const u = new URL(location.href); u.searchParams.set('_r', Date.now()); location.replace(u.toString());
+}
 async function run(msg, fn){
   showLoad(msg);
   try { await fn(); applySync(await api('sync')); }
@@ -292,6 +311,7 @@ function start(){
   clearInterval(timer); timer = setInterval(refresh, 5000);
 }
 function applySync(d){
+  try { sessionStorage.removeItem('fwm_r'); } catch (e) {}
   me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages; ORD = d.orders; NOTES = d.notes; ADM = d.admin;
   const unread = NOTES.filter(n => n.read !== 'yes');
   if (seen) unread.filter(n => !seen.has(n.id)).forEach(n => toast(n.text));
@@ -351,7 +371,7 @@ function renderListings(){
     </article>`).join('') : '<p class="empty">Nothing here yet. Post the first one.</p>';
 }
 function renderNotes(){
-  $('#notePanel').innerHTML = '<h3 style="margin-bottom:8px">Alerts</h3>' + (NOTES.length
+  $('#notePanel').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3>Alerts</h3><button class="ghost" data-act="closenotes" aria-label="Close alerts" style="padding:4px 12px;font-size:20px;line-height:1">&times;</button></div>' + (NOTES.length
     ? NOTES.map(n => `<p>${n.read !== 'yes' ? '<strong>New:</strong> ' : ''}${esc(n.text)} <small style="color:var(--mute)">${fmt(n.created)}</small></p>`).join('')
     : '<p class="empty">No alerts yet.</p>');
 }
@@ -425,6 +445,7 @@ document.body.addEventListener('click', e => {
       const n = prompt(`How many FWM tokens should ${d.name} get?`); if (!n) return;
       return run('Sending tokens...', async () => { await api('giveTokens', {userId: d.uid, amount: n}); toast('Tokens sent.'); });
     }
+    case 'closenotes': $('#notePanel').hidden = true; return;
     case 'viewchat': admChat = d.id; paint(); return;
     case 'delchat': if (!confirm('Delete this whole chat for both people?')) return; if (admChat === d.id) admChat = null; return run('Deleting chat...', () => api('deleteChat', {chatId: d.id}));
   }
@@ -500,6 +521,7 @@ $('#lockForm').onsubmit = e => {
 };
 
 /* ---------- boot ---------- */
+try { if (location.search.includes('_r=')) history.replaceState(null, '', location.pathname); } catch (e) {}
 if (token) {
   showLoad('Opening the market...', 'The first load can take a few seconds.');
   api('sync').then(d => { applySync(d); start(); })
