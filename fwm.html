@@ -191,7 +191,7 @@ h2.sub{font-size:22px;margin:28px 0 12px}
         <div class="nochat" id="nochat">Pick a conversation, or tap Message on a listing.</div>
         <div id="thread" hidden>
           <h3 id="ttitle"></h3><div id="msgs"></div>
-          <form id="sendForm"><input id="mi" placeholder="Write a message" autocomplete="off"><button>Send</button></form>
+          <form id="sendForm"><input id="mi" placeholder="Write a message (1 FWM each)" autocomplete="off"><button>Send</button></form>
         </div>
       </div>
     </section>
@@ -525,7 +525,8 @@ function renderChats(){
 $('#sendForm').onsubmit = async e => {
   e.preventDefault();
   const t = $('#mi').value.trim(); if (!t || !active) return;
-  $('#mi').value = '';
+  if (me.tokens < 1) { toast('Sending a message costs 1 FWM and you have none left.'); return; }
+  $('#mi').value = ''; me.tokens -= 1;
   M.push({id: 'tmp' + Date.now(), chatId: cid(me.id, active.id), from: me.id, fromName: me.name, to: active.id, toName: active.name, text: t, created: new Date().toISOString()});
   delete sigs.m; paint();
   try { await api('send', {to: active.id, text: t}); } catch (x) { toast(x.message); }
