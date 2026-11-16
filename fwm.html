@@ -29,7 +29,7 @@ nav{display:flex;gap:4px;flex:1}
 nav button{background:none;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;color:var(--mute);font-weight:600}
 nav button.on{background:var(--ink);color:#fff}
 .bal{display:flex;align-items:center;gap:8px;font-weight:600}
-.coin{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--coin);color:var(--ink);font:800 11px "Bricolage Grotesque";border:2px solid var(--ink)}
+.coin{display:inline-grid;place-items:center;flex:none;width:36px;height:36px;border-radius:50%;background:var(--coin);color:var(--ink);font:800 10px/1 "Bricolage Grotesque";letter-spacing:-.02em;border:2px solid var(--ink)}
 main{max-width:1000px;margin:0 auto;padding:28px 20px 60px}
 button.b,.card button,.form button,#thread button,.pk button{background:var(--blue);color:#fff;border:0;padding:9px 16px;border-radius:8px;font-weight:600;cursor:pointer}
 button.ghost{background:#fff!important;color:var(--ink)!important;border:1.5px solid var(--ink)!important}
@@ -73,7 +73,7 @@ details.sell summary{cursor:pointer;font-weight:600;color:var(--blue)}
 .nochat{display:grid;place-items:center;color:var(--mute);border:1.5px dashed var(--line);border-radius:12px}
 /* tokens */
 .tokhero{display:flex;align-items:center;gap:14px;margin-bottom:22px}
-.tokhero .coin{width:54px;height:54px;font-size:18px}
+.tokhero .coin{width:64px;height:64px;font-size:17px;border-width:3px}
 .tokhero strong{font:800 40px "Bricolage Grotesque"}
 .packs{position:relative}
 .pk{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;filter:grayscale(1);opacity:.45;pointer-events:none}
@@ -110,6 +110,9 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 .alog{background:#fff;border:1.5px solid var(--ink);border-radius:12px;padding:12px;max-height:280px;overflow:auto;margin-bottom:10px}
 .alog div{margin:4px 0;word-break:break-word}
 .toast{z-index:40}
+.packs.open .pk{filter:none;opacity:1;pointer-events:auto}
+.packs.open .lock{display:none}
+.packs.open .pk button{background:var(--blue)}
 #loading{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(247,248,245,.92)}
 .lbox{background:#fff;border:1.5px solid var(--ink);border-radius:14px;box-shadow:5px 5px 0 var(--ink);padding:26px 30px;display:flex;flex-direction:column;align-items:center;gap:12px;max-width:320px;text-align:center}
 .lbox strong{font:800 20px "Bricolage Grotesque",sans-serif}
@@ -174,6 +177,7 @@ h2.sub{font-size:22px;margin:28px 0 12px}
           <label for="p">Price (FWM)</label><input id="p" type="number" min="1" step="1" required>
           <label for="img">Photo of what it looks like</label><input id="img" type="file" accept="image/*">
           <img id="pv" class="pv" alt="" hidden>
+          <p style="color:var(--mute);font-size:14px;margin:12px 0 0">Posting a listing costs 10 FWM.</p>
           <button id="postBtn">Post listing</button>
         </form>
       </details>
@@ -202,9 +206,9 @@ h2.sub{font-size:22px;margin:28px 0 12px}
       <h2 style="margin-bottom:14px">Buy tokens</h2>
       <div class="packs">
         <div class="pk">
-          <div><b>100 FWM</b>Starter pack<br><button disabled>Locked</button></div>
-          <div><b>500 FWM</b>Market pack<br><button disabled>Locked</button></div>
-          <div><b>1,000 FWM</b>Stall pack<br><button disabled>Locked</button></div>
+          <div><b>100 FWM</b>Starter pack<br><button data-act="buytokens" data-n="100" disabled>Locked</button></div>
+          <div><b>500 FWM</b>Market pack<br><button data-act="buytokens" data-n="500" disabled>Locked</button></div>
+          <div><b>1,000 FWM</b>Stall pack<br><button data-act="buytokens" data-n="1000" disabled>Locked</button></div>
         </div>
         <div class="lock">
           <form class="panel" id="lockForm">
@@ -301,7 +305,7 @@ $('#authForm').onsubmit = async e => {
 function signOut(msg){
   clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null;
   Object.keys(sigs).forEach(k => delete sigs[k]);
-  store.set('fwm_token', null);
+  store.set('fwm_token', null); setShop(false);
   $('#app').hidden = true; $('#auth').hidden = false; $('#pw').value = '';
   if (typeof msg === 'string') $('#aerr').textContent = msg;
 }
@@ -445,6 +449,14 @@ document.body.addEventListener('click', e => {
       const n = prompt(`How many FWM tokens should ${d.name} get?`); if (!n) return;
       return run('Sending tokens...', async () => { await api('giveTokens', {userId: d.uid, amount: n}); toast('Tokens sent.'); });
     }
+    case 'buytokens': {
+      const n = d.n;
+      return run('Adding tokens...', async () => {
+        try { await api('buyTokens', {pack: n}); }
+        catch (x) { if (/passcode/i.test(x.message)) setShop(false); throw x; }
+        toast(`${n} FWM added to your wallet.`);
+      });
+    }
     case 'closenotes': {
       $('#notePanel').hidden = true;
       if (!NOTES.length) return;
@@ -478,9 +490,10 @@ $('#img').onchange = async e => {
 };
 $('#sellForm').onsubmit = e => {
   e.preventDefault(); const f = e.target;
+  if (me.tokens < 10) { toast('Posting a listing costs 10 FWM and you only have ' + me.tokens + '.'); return; }
   return run(pending ? 'Posting your listing... photos take a little longer.' : 'Posting your listing...', async () => {
     await api('post', {title: $('#t').value, category: $('#cat').value, desc: $('#d').value, price: $('#p').value, image: pending});
-    f.reset(); pending = ''; $('#pv').hidden = true; f.closest('details').open = false; toast('Listing posted.');
+    f.reset(); pending = ''; $('#pv').hidden = true; f.closest('details').open = false; toast('Listing posted. 10 FWM was used.');
   });
 };
 
@@ -519,11 +532,19 @@ $('#sendForm').onsubmit = async e => {
   refresh();
 };
 
-/* ---------- token shop (locked: there is no valid passcode and no code that grants tokens) ---------- */
-$('#lockForm').onsubmit = e => {
-  e.preventDefault();
-  $('#pc').value = '';
-  $('#perr').textContent = 'That passcode is not valid. Token sales are locked.';
+/* ---------- token shop (the passcode is checked on the server and is not stored in this file) ---------- */
+function setShop(open){
+  document.querySelector('.packs').classList.toggle('open', open);
+  document.querySelectorAll('.pk button').forEach(b => { b.disabled = !open; b.textContent = open ? 'Buy' : 'Locked'; });
+}
+$('#lockForm').onsubmit = async e => {
+  e.preventDefault(); $('#perr').textContent = '';
+  const code = $('#pc').value; $('#pc').value = '';
+  if (!code) return;
+  showLoad('Checking passcode...');
+  try { await api('unlock', {passcode: code}); setShop(true); toast('Token shop unlocked.'); }
+  catch (x) { $('#perr').textContent = x.message; }
+  hideLoad();
 };
 
 /* ---------- boot ---------- */
