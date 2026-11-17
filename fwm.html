@@ -110,6 +110,8 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 .alog{background:#fff;border:1.5px solid var(--ink);border-radius:12px;padding:12px;max-height:280px;overflow:auto;margin-bottom:10px}
 .alog div{margin:4px 0;word-break:break-word}
 .toast{z-index:40}
+.m .ts{display:block;font-size:11px;opacity:.7;margin-top:3px}
+.clist .ts{float:right;font-size:11px;color:var(--mute);font-weight:400}
 .packs.open .pk{filter:none;opacity:1;pointer-events:auto}
 .packs.open .lock{display:none}
 .packs.open .pk button{background:var(--blue)}
@@ -243,6 +245,11 @@ const sigs = {};
 const CATNAME = {information: 'Information', locks: 'Locks', lockers: 'Lockers', other: 'Other'};
 const fmt = d => { try { return new Date(d).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}); } catch (e) { return ''; } };
 
+const stamp = d => {
+  const x = new Date(d); if (isNaN(x)) return '';
+  const t = x.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+  return x.toDateString() === new Date().toDateString() ? t : x.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ', ' + t;
+};
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),3600)}
 async function api(action, p = {}) {
   const r = await fetch(API_URL, {method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({action, token, ...p})});
@@ -367,6 +374,7 @@ function renderListings(){
       <span class="tag">${esc(CATNAME[l.category] || 'Other')}</span>
       <h3>${esc(l.title)}</h3><p>${esc(l.desc)}</p>
       <div class="meta"><span class="price">${l.price} FWM</span><span>${esc(l.sellerName)}</span></div>
+      ${l.created ? `<small class="meta" style="display:block">Posted on ${new Date(l.created).toLocaleDateString([], {month: 'short', day: 'numeric', year: 'numeric'})}</small>` : ''}
       <div class="row">
         ${l.sellerId === me.id ? '<em class="meta">Your listing</em>'
           : `<button data-act="buy" data-id="${l.id}">Buy</button><button class="ghost" data-act="msg" data-id="${l.id}">Message</button>`}
@@ -422,7 +430,7 @@ function renderAdmin(){
       <button class="red" data-act="delchat" data-id="${c.id}">Delete chat</button></div></div>`).join('') || '<p class="empty">No chats yet.</p>');
   if (admChat) {
     const ms = ADM.messages.filter(m => m.chatId === admChat);
-    html += '<div class="alog">' + (ms.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)}</div>`).join('') || 'This chat is empty.') + '</div>';
+    html += '<div class="alog">' + (ms.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)} <small style="color:var(--mute)">${stamp(m.created)}</small></div>`).join('') || 'This chat is empty.') + '</div>';
   }
   $('#adm').innerHTML = html;
 }
@@ -512,14 +520,14 @@ function showChat(id, name){ active = {id, name}; delete sigs.m; paint(); }
 function renderChats(){
   const cs = convos();
   $('#clist').innerHTML = cs.length ? cs.map(c => `<button data-id="${c.id}" data-name="${esc(c.name)}" class="${active && c.id === active.id ? 'on' : ''}">
-    <strong>${esc(c.name)}</strong><small>${esc(c.last || 'No messages yet')}</small></button>`).join('')
+    <strong>${esc(c.name)}</strong>${c.last ? `<span class="ts">${stamp(c.at)}</span>` : ''}<small>${esc(c.last || 'No messages yet')}</small></button>`).join('')
     : '<p class="empty" style="padding:14px">No conversations yet.</p>';
   $('#clist').querySelectorAll('button').forEach(b => b.onclick = () => showChat(b.dataset.id, b.dataset.name));
   $('#nochat').hidden = !!active; $('#thread').hidden = !active;
   if (!active) return;
   $('#ttitle').textContent = active.name;
   const id = cid(me.id, active.id), box = $('#msgs');
-  box.innerHTML = M.filter(m => m.chatId === id).map(m => `<div class="m ${m.from === me.id ? 'me' : ''}">${esc(m.text)}</div>`).join('');
+  box.innerHTML = M.filter(m => m.chatId === id).map(m => `<div class="m ${m.from === me.id ? 'me' : ''}">${esc(m.text)}<small class="ts">${stamp(m.created)}</small></div>`).join('');
   box.scrollTop = box.scrollHeight;
 }
 $('#sendForm').onsubmit = async e => {
