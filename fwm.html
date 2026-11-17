@@ -110,6 +110,9 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 .alog{background:#fff;border:1.5px solid var(--ink);border-radius:12px;padding:12px;max-height:280px;overflow:auto;margin-bottom:10px}
 .alog div{margin:4px 0;word-break:break-word}
 .toast{z-index:40}
+.note{background:#fff8e1;border:1.5px solid var(--coin);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:14px}
+.ck{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px;margin-top:14px;color:var(--mute)}
+#ack{width:auto;margin-top:3px}
 .m .ts{display:block;font-size:11px;opacity:.7;margin-top:3px}
 .clist .ts{float:right;font-size:11px;color:var(--mute);font-weight:400}
 .packs.open .pk{filter:none;opacity:1;pointer-events:auto}
@@ -137,6 +140,7 @@ h2.sub{font-size:22px;margin:28px 0 12px}
     <div id="nameRow" hidden><label for="name">Display name</label><input id="name" autocomplete="nickname"></div>
     <label for="email">Email</label><input id="email" type="email" required autocomplete="email">
     <label for="pw">Password</label><input id="pw" type="password" minlength="6" required autocomplete="current-password">
+    <label class="ck" id="ackRow" hidden><input type="checkbox" id="ack"><span>I understand that other members can pay FWM to read my chats (1 FWM per message), and that I get an alert when they do.</span></label>
     <button class="b" id="authBtn">Sign in</button>
     <div class="err" id="aerr" role="alert"></div>
   </form>
@@ -159,6 +163,7 @@ h2.sub{font-size:22px;margin:28px 0 12px}
     <button class="ghost b" id="out">Sign out</button>
   </header>
   <main>
+    <section id="peekAck" class="note" hidden><strong>New: chats are not private.</strong> Other members can pay 1 FWM per message to read a conversation, and you get an alert when they do. <button class="ghost" data-act="ackpeek" style="padding:4px 12px;margin-left:8px">Got it</button></section>
     <section id="notePanel" class="panel" hidden></section>
 
     <section id="v-market">
@@ -188,6 +193,7 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 
     <section id="v-chats" hidden>
       <div class="head"><h2>Messages</h2></div>
+      <p class="note"><strong>Chats are not private.</strong> Other members can pay 1 FWM per message to read a conversation, and you get an alert naming them when they do. Sending a message costs 1 FWM.</p>
       <div class="chatwrap">
         <div class="clist" id="clist"></div>
         <div class="nochat" id="nochat">Pick a conversation, or tap Message on a listing.</div>
@@ -196,6 +202,10 @@ h2.sub{font-size:22px;margin:28px 0 12px}
           <form id="sendForm"><input id="mi" placeholder="Write a message (1 FWM each)" autocomplete="off"><button>Send</button></form>
         </div>
       </div>
+      <h2 class="sub">Read other people's chats</h2>
+      <p class="empty" style="margin-top:-6px">Every message costs 1 FWM to read. Both people in the chat are told you paid.</p>
+      <div id="peek" class="alog" hidden></div>
+      <div id="forsale"></div>
     </section>
 
     <section id="v-orders" hidden>
@@ -240,6 +250,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const store = {get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
                set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }};
 let token = store.get('fwm_token'), me = null, L = {}, M = [], ORD = [], NOTES = [], ADM = null;
+let FS = [], PEEK = null;
 let active = null, timer = null, mode = 'in', cat = 'all', admChat = null, pending = '', seen = null, view = 'market';
 const sigs = {};
 const CATNAME = {information: 'Information', locks: 'Locks', lockers: 'Lockers', other: 'Other'};
@@ -295,6 +306,7 @@ async function run(msg, fn){
 $('#swap').onclick = () => {
   mode = mode === 'in' ? 'up' : 'in';
   $('#nameRow').hidden = mode === 'in';
+  $('#ackRow').hidden = mode === 'in'; $('#ack').required = mode === 'up';
   $('#authBtn').textContent = mode === 'in' ? 'Sign in' : 'Create account';
   $('#swap').textContent = mode === 'in' ? 'New here? Create an account' : 'Have an account? Sign in';
   $('#aerr').textContent = '';
@@ -305,12 +317,13 @@ $('#authForm').onsubmit = async e => {
   try {
     const d = await api(mode === 'up' ? 'signup' : 'login', {name: $('#name').value, email: $('#email').value, password: $('#pw').value});
     token = d.token; store.set('fwm_token', token); me = d.user;
+    if (mode === 'up') store.set('fwm_ack_peek', '1');
     applySync(await api('sync')); start();
   } catch (x) { $('#aerr').textContent = x.message; }
   hideLoad(); $('#authBtn').disabled = false;
 };
 function signOut(msg){
-  clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null;
+  clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null; PEEK = null; FS = []; $('#peek').hidden = true;
   Object.keys(sigs).forEach(k => delete sigs[k]);
   store.set('fwm_token', null); setShop(false);
   $('#app').hidden = true; $('#auth').hidden = false; $('#pw').value = '';
@@ -319,11 +332,12 @@ function signOut(msg){
 $('#out').onclick = () => signOut();
 function start(){
   $('#auth').hidden = true; $('#app').hidden = false; go('market');
+  $('#peekAck').hidden = !!store.get('fwm_ack_peek');
   clearInterval(timer); timer = setInterval(refresh, 5000);
 }
 function applySync(d){
   try { sessionStorage.removeItem('fwm_r'); } catch (e) {}
-  me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages; ORD = d.orders; NOTES = d.notes; ADM = d.admin;
+  me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages; ORD = d.orders; NOTES = d.notes; ADM = d.admin; FS = d.forSale || [];
   const unread = NOTES.filter(n => n.read !== 'yes');
   if (seen) unread.filter(n => !seen.has(n.id)).forEach(n => toast(n.text));
   seen = new Set(NOTES.map(n => n.id));
@@ -364,6 +378,7 @@ function paint(){
   region('m', [M.length, M.length ? M[M.length-1].id : '', active && active.id], renderChats);
   region('o', ORD, renderOrders);
   region('n', NOTES, renderNotes);
+  region('fs', FS, renderForSale);
   if (me.admin) region('a', [ADM, admChat], renderAdmin);
 }
 function renderListings(){
@@ -381,6 +396,22 @@ function renderListings(){
         ${me.admin ? `<button class="red" style="background:#b3261e" data-act="delist" data-id="${l.id}">Delist</button>` : ''}
       </div>
     </article>`).join('') : '<p class="empty">Nothing here yet. Post the first one.</p>';
+}
+function renderForSale(){
+  $('#forsale').innerHTML = FS.length ? FS.map(c => {
+    const t = c.names.join(' and ');
+    const label = c.price === 0 && c.unlocked ? 'Open' : `Read for ${c.price} FWM`;
+    return `<div class="item"><div><strong>${esc(t)}</strong><small>${c.count} message${c.count > 1 ? 's' : ''}, last ${stamp(c.last)}${c.unlocked && c.price ? ', you have read ' + c.unlocked : ''}</small></div>
+      <button data-act="buychat" data-id="${esc(c.chatId)}" data-title="${esc(t)}" data-price="${c.price}" data-count="${c.count}">${label}</button></div>`;
+  }).join('') : '<p class="empty">No other conversations yet.</p>';
+}
+function renderPeek(){
+  const p = $('#peek');
+  if (!PEEK) { p.hidden = true; return; }
+  p.hidden = false;
+  p.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong>${esc(PEEK.title)}</strong><button class="ghost" data-act="closepeek" aria-label="Close" style="padding:4px 12px;font-size:20px;line-height:1">&times;</button></div>`
+    + (PEEK.msgs.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)} <small style="color:var(--mute)">${stamp(m.created)}</small></div>`).join('') || 'No messages.');
+  p.scrollIntoView({behavior: 'smooth', block: 'nearest'});
 }
 function renderNotes(){
   $('#notePanel').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3>Alerts</h3><button class="ghost" data-act="closenotes" aria-label="Close alerts" style="padding:4px 12px;font-size:20px;line-height:1">&times;</button></div>' + (NOTES.length
@@ -465,6 +496,16 @@ document.body.addEventListener('click', e => {
         toast(`${n} FWM added to your wallet.`);
       });
     }
+    case 'buychat': {
+      const price = +d.price, title = d.title;
+      if (price > 0 && !confirm(`Pay ${price} FWM to read ${d.count} message(s) between ${title}? They will be told that you did.`)) return;
+      return run(price > 0 ? 'Unlocking chat...' : 'Opening chat...', async () => {
+        const msgs = await api(price > 0 ? 'buyChat' : 'peekChat', {chatId: d.id});
+        PEEK = {title, msgs}; renderPeek();
+      });
+    }
+    case 'closepeek': PEEK = null; renderPeek(); return;
+    case 'ackpeek': store.set('fwm_ack_peek', '1'); $('#peekAck').hidden = true; return;
     case 'closenotes': {
       $('#notePanel').hidden = true;
       if (!NOTES.length) return;
