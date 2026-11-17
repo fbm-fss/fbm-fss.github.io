@@ -196,6 +196,11 @@ h2.sub{font-size:22px;margin:28px 0 12px}
     <section id="v-chats" hidden>
       <div class="head"><h2>Messages</h2></div>
       <p class="note"><strong>Chats are not private.</strong> Other members can pay 1 FCT per message to read a conversation, and you get an alert naming them when they do. Sending a message costs 1 FCT.</p>
+      <div style="max-width:520px;margin-bottom:18px">
+        <label for="us" style="margin-top:0">Start a chat with anyone</label>
+        <input id="us" type="search" placeholder="Search people by name" autocomplete="off">
+        <div id="usres"></div>
+      </div>
       <div class="chatwrap">
         <div class="clist" id="clist"></div>
         <div class="nochat" id="nochat">Pick a conversation, or tap Message on a listing.</div>
@@ -334,7 +339,7 @@ $('#authForm').onsubmit = async e => {
   hideLoad(); $('#authBtn').disabled = false;
 };
 function signOut(msg){
-  clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null; PEEK = null; FS = []; $('#peek').hidden = true;
+  clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null; PEEK = null; FS = []; $('#peek').hidden = true; $('#us').value = ''; $('#usres').innerHTML = '';
   Object.keys(sigs).forEach(k => delete sigs[k]);
   store.set('fwm_token', null); setShop(false);
   $('#app').hidden = true; $('#auth').hidden = false; $('#pw').value = '';
@@ -535,6 +540,10 @@ document.body.addEventListener('click', e => {
     }
     case 'closepeek': PEEK = null; renderPeek(); return;
     case 'ackpeek': store.set('fwm_ack_peek', '1'); $('#peekAck').hidden = true; return;
+    case 'chatwith':
+      $('#us').value = ''; $('#usres').innerHTML = ''; usSeq++;
+      go('chats'); showChat(d.id, d.name); $('#mi').focus();
+      return;
     case 'closenotes': {
       $('#notePanel').hidden = true;
       if (!NOTES.length) return;
@@ -573,6 +582,26 @@ $('#sellForm').onsubmit = e => {
     await api('post', {title: $('#t').value, category: $('#cat').value, desc: $('#d').value, price: $('#p').value, image: pending});
     f.reset(); pending = ''; $('#pv').hidden = true; f.closest('details').open = false; toast('Listing posted. 10 FWM was used.');
   });
+};
+
+/* ---------- find people ---------- */
+let usTimer, usSeq = 0;
+$('#us').oninput = () => {
+  clearTimeout(usTimer);
+  const q = $('#us').value.trim();
+  if (!q) { usSeq++; $('#usres').innerHTML = ''; return; }
+  usTimer = setTimeout(async () => {
+    const seq = ++usSeq;
+    $('#usres').innerHTML = '<p class="empty">Searching...</p>';
+    try {
+      const list = await api('searchUsers', {q});
+      if (seq !== usSeq) return;
+      $('#usres').innerHTML = list.length ? list.map(u => {
+        const j = new Date(u.joined), when = isNaN(j) ? '' : 'Joined ' + j.toLocaleDateString([], {month: 'short', year: 'numeric'});
+        return `<div class="item" style="margin:8px 0 0"><div><strong>${esc(u.name)}</strong><small>${when}</small></div><button data-act="chatwith" data-id="${u.id}" data-name="${esc(u.name)}">Chat</button></div>`;
+      }).join('') : '<p class="empty">No one found.</p>';
+    } catch (x) { if (seq === usSeq) $('#usres').innerHTML = `<p class="empty">${esc(x.message)}</p>`; }
+  }, 350);
 };
 
 /* ---------- chat ---------- */
