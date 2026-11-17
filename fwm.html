@@ -110,6 +110,8 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 .alog{background:#fff;border:1.5px solid var(--ink);border-radius:12px;padding:12px;max-height:280px;overflow:auto;margin-bottom:10px}
 .alog div{margin:4px 0;word-break:break-word}
 .toast{z-index:40}
+.coin.fct{background:#bcd0ff}
+.tokhero{flex-wrap:wrap}
 .note{background:#fff8e1;border:1.5px solid var(--coin);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:14px}
 .ck{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:13px;margin-top:14px;color:var(--mute)}
 #ack{width:auto;margin-top:3px}
@@ -135,12 +137,12 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 <!-- SIGN IN -->
 <section id="auth" hidden>
   <h1>The Fletcher White Market</h1>
-  <p>Buy and sell with FWM tokens. New accounts start with 50.</p>
+  <p>Buy and sell with FWM. Chat with FCT. New accounts start with 10 FWM and 100 FCT.</p>
   <form class="panel" id="authForm">
     <div id="nameRow" hidden><label for="name">Display name</label><input id="name" autocomplete="nickname"></div>
     <label for="email">Email</label><input id="email" type="email" required autocomplete="email">
     <label for="pw">Password</label><input id="pw" type="password" minlength="6" required autocomplete="current-password">
-    <label class="ck" id="ackRow" hidden><input type="checkbox" id="ack"><span>I understand that other members can pay FWM to read my chats (1 FWM per message), and that I get an alert when they do.</span></label>
+    <label class="ck" id="ackRow" hidden><input type="checkbox" id="ack"><span>I understand that other members can pay FCT to read my chats (1 FCT per message), and that I get an alert when they do.</span></label>
     <button class="b" id="authBtn">Sign in</button>
     <div class="err" id="aerr" role="alert"></div>
   </form>
@@ -159,11 +161,11 @@ h2.sub{font-size:22px;margin:28px 0 12px}
       <button data-v="admin" id="navAdmin" hidden>Admin</button>
     </nav>
     <button class="ghost b" id="bell">Alerts</button>
-    <span class="bal"><span class="coin">FWM</span><span id="bal">0</span><span id="who" style="color:var(--mute);font-weight:400"></span></span>
+    <span class="bal"><span class="coin">FWM</span><span id="bal">0</span><span class="coin fct">FCT</span><span id="bal3">0</span><span id="who" style="color:var(--mute);font-weight:400"></span></span>
     <button class="ghost b" id="out">Sign out</button>
   </header>
   <main>
-    <section id="peekAck" class="note" hidden><strong>New: chats are not private.</strong> Other members can pay 1 FWM per message to read a conversation, and you get an alert when they do. <button class="ghost" data-act="ackpeek" style="padding:4px 12px;margin-left:8px">Got it</button></section>
+    <section id="peekAck" class="note" hidden><strong>New: chats are not private.</strong> Other members can pay 1 FCT per message to read a conversation, and you get an alert when they do. <button class="ghost" data-act="ackpeek" style="padding:4px 12px;margin-left:8px">Got it</button></section>
     <section id="notePanel" class="panel" hidden></section>
 
     <section id="v-market">
@@ -193,17 +195,17 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 
     <section id="v-chats" hidden>
       <div class="head"><h2>Messages</h2></div>
-      <p class="note"><strong>Chats are not private.</strong> Other members can pay 1 FWM per message to read a conversation, and you get an alert naming them when they do. Sending a message costs 1 FWM.</p>
+      <p class="note"><strong>Chats are not private.</strong> Other members can pay 1 FCT per message to read a conversation, and you get an alert naming them when they do. Sending a message costs 1 FCT.</p>
       <div class="chatwrap">
         <div class="clist" id="clist"></div>
         <div class="nochat" id="nochat">Pick a conversation, or tap Message on a listing.</div>
         <div id="thread" hidden>
           <h3 id="ttitle"></h3><div id="msgs"></div>
-          <form id="sendForm"><input id="mi" placeholder="Write a message (1 FWM each)" autocomplete="off"><button>Send</button></form>
+          <form id="sendForm"><input id="mi" placeholder="Write a message (1 FCT each)" autocomplete="off"><button>Send</button></form>
         </div>
       </div>
       <h2 class="sub">Read other people's chats</h2>
-      <p class="empty" style="margin-top:-6px">Every message costs 1 FWM to read. Both people in the chat are told you paid.</p>
+      <p class="empty" style="margin-top:-6px">Every message costs 1 FCT to read. Both people in the chat are told you paid.</p>
       <div id="peek" class="alog" hidden></div>
       <div id="forsale"></div>
     </section>
@@ -214,13 +216,19 @@ h2.sub{font-size:22px;margin:28px 0 12px}
     </section>
 
     <section id="v-tokens" hidden>
-      <div class="tokhero"><span class="coin">FWM</span><div><strong id="bal2">0</strong><div style="color:var(--mute)">FWM tokens in your wallet</div></div></div>
+      <div class="tokhero"><span class="coin">FWM</span><div><strong id="bal2">0</strong><div style="color:var(--mute)">FWM, for buying stuff</div></div>
+        <span class="coin fct" style="margin-left:28px">FCT</span><div><strong id="bal4">0</strong><div style="color:var(--mute)">FCT, for chatting</div></div></div>
       <h2 style="margin-bottom:14px">Buy tokens</h2>
       <div class="packs">
+        <div class="pk" style="margin-bottom:16px">
+          <div><b>10 FWM</b>Starter pack<br><button data-act="buytokens" data-k="fwm" data-n="10" disabled>Locked</button></div>
+          <div><b>50 FWM</b>Market pack<br><button data-act="buytokens" data-k="fwm" data-n="50" disabled>Locked</button></div>
+          <div><b>100 FWM</b>Stall pack<br><button data-act="buytokens" data-k="fwm" data-n="100" disabled>Locked</button></div>
+        </div>
         <div class="pk">
-          <div><b>100 FWM</b>Starter pack<br><button data-act="buytokens" data-n="100" disabled>Locked</button></div>
-          <div><b>500 FWM</b>Market pack<br><button data-act="buytokens" data-n="500" disabled>Locked</button></div>
-          <div><b>1,000 FWM</b>Stall pack<br><button data-act="buytokens" data-n="1000" disabled>Locked</button></div>
+          <div><b>100 FCT</b>Chat pack<br><button data-act="buytokens" data-k="fct" data-n="100" disabled>Locked</button></div>
+          <div><b>500 FCT</b>Chatter pack<br><button data-act="buytokens" data-k="fct" data-n="500" disabled>Locked</button></div>
+          <div><b>1,000 FCT</b>Gabber pack<br><button data-act="buytokens" data-k="fct" data-n="1000" disabled>Locked</button></div>
         </div>
         <div class="lock">
           <form class="panel" id="lockForm">
@@ -377,7 +385,8 @@ $('#chips').onclick = e => {
 /* ---------- paint ---------- */
 function region(k, v, f){ const s = JSON.stringify(v); if (sigs[k] !== s) { sigs[k] = s; f(); } }
 function paint(){
-  $('#bal').textContent = $('#bal2').textContent = me.tokens;
+  $('#bal').textContent = $('#bal2').textContent = me.fwm;
+  $('#bal3').textContent = $('#bal4').textContent = me.fct;
   $('#who').textContent = me.name;
   $('#navAdmin').hidden = !me.admin;
   const unread = NOTES.filter(n => n.read !== 'yes').length;
@@ -408,7 +417,7 @@ function renderListings(){
 function renderForSale(){
   $('#forsale').innerHTML = FS.length ? FS.map(c => {
     const t = c.names.join(' and ');
-    const label = c.price === 0 && c.unlocked ? 'Open' : `Read for ${c.price} FWM`;
+    const label = c.price === 0 && c.unlocked ? 'Open' : `Read for ${c.price} FCT`;
     return `<div class="item"><div><strong>${esc(t)}</strong><small>${c.count} message${c.count > 1 ? 's' : ''}, last ${stamp(c.last)}${c.unlocked && c.price ? ', you have read ' + c.unlocked : ''}</small></div>
       <button data-act="buychat" data-id="${esc(c.chatId)}" data-title="${esc(t)}" data-price="${c.price}" data-count="${c.count}">${label}</button></div>`;
   }).join('') : '<p class="empty">No other conversations yet.</p>';
@@ -422,9 +431,10 @@ function renderPeek(){
   p.scrollIntoView({behavior: 'smooth', block: 'nearest'});
 }
 function renderNotes(){
-  $('#notePanel').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3>Alerts</h3><button class="ghost" data-act="closenotes" aria-label="Close alerts" style="padding:4px 12px;font-size:20px;line-height:1">&times;</button></div>' + (NOTES.length
-    ? NOTES.map(n => `<p>${n.read !== 'yes' ? '<strong>New:</strong> ' : ''}${esc(n.text)} <small style="color:var(--mute)">${fmt(n.created)}</small></p>`).join('')
-    : '<p class="empty">No alerts yet.</p>');
+  $('#notePanel').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3>Alerts</h3><button class="ghost" data-act="closenotes" aria-label="Close alerts" style="padding:4px 12px;font-size:20px;line-height:1">&times;</button></div>'
+    + (NOTES.length
+      ? NOTES.map(n => `<p>${n.read !== 'yes' ? '<strong>New:</strong> ' : ''}${esc(n.text)} <small style="color:var(--mute)">${fmt(n.created)}</small></p>`).join('')
+      : '<p class="empty">No alerts yet.</p>');
 }
 function renderOrders(){
   const row = o => {
@@ -458,11 +468,15 @@ function renderAdmin(){
       <button class="ghost" data-act="dismiss" data-id="${r.id}">Dismiss</button>
       <button class="red" data-act="ban" data-uid="${r.sellerId}" data-on="1">Ban seller</button></div></div>`).join('') || '<p class="empty">No open reports.</p>');
   if (done.length) html += `<p class="empty">${done.length} closed report${done.length > 1 ? 's' : ''}: ` + done.slice(0, 5).map(r => `${esc(r.title)} (${r.status})`).join(', ') + '</p>';
-  html += '<h2 class="sub">People</h2>' + ADM.users.map(u => `
-    <div class="item"><div><strong>${esc(u.name)}</strong>${u.admin ? ' (admin)' : ''}${u.banned ? ' <span class="st reported">banned</span>' : ''}
-      <small>${esc(u.email)}, ${u.tokens} FWM</small></div>
-      <div class="row"><button data-act="give" data-uid="${u.id}" data-name="${esc(u.name)}">Give tokens</button>
-      ${u.admin ? '' : `<button class="${u.banned ? '' : 'red'}" data-act="ban" data-uid="${u.id}" data-on="${u.banned ? '' : '1'}">${u.banned ? 'Unban' : 'Ban'}</button>`}</div></div>`).join('');
+  html += '<h2 class="sub">People</h2>' + ADM.users.map(u => {
+    const nm = esc(u.name);
+    const tk = (sign, k) => `<button class="${sign === '-' ? 'red' : ''}" data-act="tok" data-uid="${u.id}" data-name="${nm}" data-k="${k}" data-sign="${sign}">${sign === '-' ? 'Take' : 'Give'} ${k.toUpperCase()}</button>`;
+    return `<div class="item"><div><strong>${nm}</strong>${u.owner ? ' (owner)' : u.admin ? ' (admin)' : ''}${u.banned ? ' <span class="st reported">banned</span>' : ''}
+      <small>${esc(u.email)}, ${u.fwm} FWM, ${u.fct} FCT</small></div>
+      <div class="row">${tk('+', 'fwm')}${tk('+', 'fct')}${tk('-', 'fwm')}${tk('-', 'fct')}
+      ${me.owner && !u.owner ? `<button class="ghost" data-act="${u.admin ? 'rmadmin' : 'mkadmin'}" data-uid="${u.id}" data-name="${nm}">${u.admin ? 'Remove admin' : 'Make admin'}</button>` : ''}
+      ${u.admin ? '' : `<button class="${u.banned ? '' : 'red'}" data-act="ban" data-uid="${u.id}" data-on="${u.banned ? '' : '1'}">${u.banned ? 'Unban' : 'Ban'}</button>`}</div></div>`;
+  }).join('');
   html += '<h2 class="sub">All chats</h2>' + (chats.map(c => `
     <div class="item"><div><strong>${esc(Object.values(c.names).join(' and '))}</strong><small>${c.n} message${c.n > 1 ? 's' : ''}, last ${fmt(c.last)}</small></div>
       <div class="row"><button class="ghost" data-act="viewchat" data-id="${c.id}">View</button>
@@ -492,21 +506,28 @@ document.body.addEventListener('click', e => {
     case 'refund': if (!confirm('Refund the buyer? The tokens come out of the seller.')) return; return run('Refunding the buyer...', () => api('resolveReport', {id: d.id, decision: 'refund'}));
     case 'dismiss': return run('Closing the report...', () => api('resolveReport', {id: d.id, decision: 'dismiss'}));
     case 'ban': if (d.on && !confirm('Ban this person and delist their items?')) return; return run(d.on ? 'Banning...' : 'Unbanning...', () => api('ban', {userId: d.uid, banned: !!d.on}));
-    case 'give': {
-      const n = prompt(`How many FWM tokens should ${d.name} get?`); if (!n) return;
-      return run('Sending tokens...', async () => { await api('giveTokens', {userId: d.uid, amount: n}); toast('Tokens sent.'); });
+    case 'tok': {
+      const K = d.k.toUpperCase(), take = d.sign === '-';
+      const n = parseInt(prompt(`${take ? 'Take how many' : 'Give how many'} ${K} ${take ? 'from' : 'to'} ${d.name}?`), 10);
+      if (!(n >= 1)) return;
+      return run(take ? 'Removing tokens...' : 'Sending tokens...', async () => {
+        await api('adjustTokens', {userId: d.uid, kind: d.k, amount: take ? -n : n});
+        toast(take ? `Took up to ${n} ${K}.` : `Gave ${n} ${K}.`);
+      });
     }
+    case 'mkadmin': if (!confirm(`Make ${d.name} an admin? They will be able to ban people, delist items, read every chat, and give or take tokens.`)) return; return run('Adding admin...', () => api('addAdmin', {userId: d.uid}));
+    case 'rmadmin': if (!confirm(`Remove ${d.name} as an admin?`)) return; return run('Removing admin...', () => api('removeAdmin', {userId: d.uid}));
     case 'buytokens': {
       const n = d.n;
       return run('Adding tokens...', async () => {
-        try { await api('buyTokens', {pack: n}); }
+        try { await api('buyTokens', {pack: n, kind: d.k}); }
         catch (x) { if (/passcode/i.test(x.message)) setShop(false); throw x; }
-        toast(`${n} FWM added to your wallet.`);
+        toast(`${n} ${d.k.toUpperCase()} added to your wallet.`);
       });
     }
     case 'buychat': {
       const price = +d.price, title = d.title;
-      if (price > 0 && !confirm(`Pay ${price} FWM to read ${d.count} message(s) between ${title}? They will be told that you did.`)) return;
+      if (price > 0 && !confirm(`Pay ${price} FCT to read ${d.count} message(s) between ${title}? They will be told that you did.`)) return;
       return run(price > 0 ? 'Unlocking chat...' : 'Opening chat...', async () => {
         const msgs = await api(price > 0 ? 'buyChat' : 'peekChat', {chatId: d.id});
         PEEK = {title, msgs}; renderPeek();
@@ -547,7 +568,7 @@ $('#img').onchange = async e => {
 };
 $('#sellForm').onsubmit = e => {
   e.preventDefault(); const f = e.target;
-  if (me.tokens < 10) { toast('Posting a listing costs 10 FWM and you only have ' + me.tokens + '.'); return; }
+  if (me.fwm < 10) { toast('Posting a listing costs 10 FWM and you only have ' + me.fwm + '.'); return; }
   return run(pending ? 'Posting your listing... photos take a little longer.' : 'Posting your listing...', async () => {
     await api('post', {title: $('#t').value, category: $('#cat').value, desc: $('#d').value, price: $('#p').value, image: pending});
     f.reset(); pending = ''; $('#pv').hidden = true; f.closest('details').open = false; toast('Listing posted. 10 FWM was used.');
@@ -582,8 +603,8 @@ function renderChats(){
 $('#sendForm').onsubmit = async e => {
   e.preventDefault();
   const t = $('#mi').value.trim(); if (!t || !active) return;
-  if (me.tokens < 1) { toast('Sending a message costs 1 FWM and you have none left.'); return; }
-  $('#mi').value = ''; me.tokens -= 1;
+  if (me.fct < 1) { toast('Sending a message costs 1 FCT and you have none left.'); return; }
+  $('#mi').value = ''; me.fct -= 1;
   M.push({id: 'tmp' + Date.now(), chatId: cid(me.id, active.id), from: me.id, fromName: me.name, to: active.id, toName: active.name, text: t, created: new Date().toISOString()});
   delete sigs.m; paint();
   try { await api('send', {to: active.id, text: t}); } catch (x) { toast(x.message); }
