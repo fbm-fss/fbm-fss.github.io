@@ -263,18 +263,21 @@ const stamp = d => {
 };
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),3600)}
 async function api(action, p = {}) {
-  const r = await fetch(API_URL, {method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({action, token, ...p})});
-  const j = await r.json();
+  let j;
+  try {
+    const r = await fetch(API_URL, {method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({action, token, ...p})});
+    j = await r.json();
+  } catch (e) { throw new Error('Could not reach the market. Please try again in a moment.'); }
   if (!j.ok) throw new Error(j.error);
   return j.data;
 }
 
 let loadTimer, loadWatch;
-function showLoad(msg, hint = ''){
+function showLoad(msg, hint = '', watch = 20000){
   $('#ltext').textContent = msg; $('#lhint').textContent = hint; $('#loading').hidden = false;
   clearTimeout(loadTimer); clearTimeout(loadWatch);
   loadTimer = setTimeout(() => { $('#lhint').textContent = 'Still working. The Google Sheet can take a few seconds to respond.'; }, 5000);
-  loadWatch = setTimeout(stuck, 20000);
+  loadWatch = setTimeout(stuck, watch);
 }
 function hideLoad(){ clearTimeout(loadTimer); clearTimeout(loadWatch); $('#loading').hidden = true; }
 // Loading for 20+ seconds: clear caches and reload (at most twice, so a real outage can't loop forever)
@@ -296,7 +299,7 @@ async function stuck(){
   const u = new URL(location.href); u.searchParams.set('_r', Date.now()); location.replace(u.toString());
 }
 async function run(msg, fn){
-  showLoad(msg);
+  showLoad(msg, '', 45000); // actions get longer before the auto-refresh, so a purchase is not cut off mid-way
   try { await fn(); applySync(await api('sync')); }
   catch (x) { toast(x.message); try { applySync(await api('sync')); } catch (y) {} }
   hideLoad();
@@ -333,7 +336,7 @@ $('#out').onclick = () => signOut();
 function start(){
   $('#auth').hidden = true; $('#app').hidden = false; go('market');
   $('#peekAck').hidden = !!store.get('fwm_ack_peek');
-  clearInterval(timer); timer = setInterval(refresh, 5000);
+  clearInterval(timer); timer = setInterval(refresh, 8000);
 }
 function applySync(d){
   try { sessionStorage.removeItem('fwm_r'); } catch (e) {}
@@ -343,10 +346,15 @@ function applySync(d){
   seen = new Set(NOTES.map(n => n.id));
   paint();
 }
+let syncing = false;
 async function refresh(){
+  if (syncing || document.hidden) return;
+  syncing = true;
   try { applySync(await api('sync')); }
   catch (x) { if (/session|banned/i.test(x.message)) signOut(x.message); }
+  syncing = false;
 }
+document.addEventListener('visibilitychange', () => { if (!document.hidden && me) refresh(); });
 
 /* ---------- navigation ---------- */
 function go(v){
