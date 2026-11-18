@@ -110,6 +110,11 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 .alog{background:#fff;border:1.5px solid var(--ink);border-radius:12px;padding:12px;max-height:280px;overflow:auto;margin-bottom:10px}
 .alog div{margin:4px 0;word-break:break-word}
 .toast{z-index:40}
+.m .mimg{display:block;max-width:220px;max-height:220px;border-radius:10px;margin:2px 0 4px;background:#dbe2fb}
+.m a{display:block}
+#mpv{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line)}
+#mpv img{height:52px;border-radius:6px}
+#mpv button{padding:4px 10px}
 .coin.fct{background:#bcd0ff}
 .tokhero{flex-wrap:wrap}
 .note{background:#fff8e1;border:1.5px solid var(--coin);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:14px}
@@ -206,7 +211,8 @@ h2.sub{font-size:22px;margin:28px 0 12px}
         <div class="nochat" id="nochat">Pick a conversation, or tap Message on a listing.</div>
         <div id="thread" hidden>
           <h3 id="ttitle"></h3><div id="msgs"></div>
-          <form id="sendForm"><input id="mi" placeholder="Write a message (1 FCT each)" autocomplete="off"><button>Send</button></form>
+          <div id="mpv" hidden><img id="mpvimg" alt="Photo to send"><button type="button" class="ghost" id="mpvx">Remove</button></div>
+          <form id="sendForm"><button type="button" class="ghost" id="attachBtn" aria-label="Attach a photo">Photo</button><input id="mfile" type="file" accept="image/*" hidden><input id="mi" placeholder="Write a message (1 FCT each)" autocomplete="off"><button>Send</button></form>
         </div>
       </div>
       <h2 class="sub">Read other people's chats</h2>
@@ -263,7 +269,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const store = {get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
                set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }};
 let token = store.get('fwm_token'), me = null, L = {}, M = [], ORD = [], NOTES = [], ADM = null;
-let FS = [], PEEK = null;
+let FS = [], PEEK = null, chatPending = '', OUT = [];
 let active = null, timer = null, mode = 'in', cat = 'all', admChat = null, pending = '', seen = null, view = 'market';
 const sigs = {};
 const CATNAME = {information: 'Information', locks: 'Locks', lockers: 'Lockers', other: 'Other'};
@@ -274,6 +280,11 @@ const stamp = d => {
   const t = x.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
   return x.toDateString() === new Date().toDateString() ? t : x.toLocaleDateString([], {month: 'short', day: 'numeric'}) + ', ' + t;
 };
+const imgSrc = (id, w = 600) => id.startsWith('data:') ? id : `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${w}`;
+const chatImg = m => !m.image ? '' : m.image.startsWith('data:')
+  ? `<img class="mimg" src="${m.image}" alt="Photo">`
+  : `<a href="${imgSrc(m.image, 1400)}" target="_blank" rel="noopener"><img class="mimg" src="${imgSrc(m.image)}" alt="Photo" loading="lazy"></a>`;
+const photoLink = m => m.image && !m.image.startsWith('data:') ? ` <a href="${imgSrc(m.image, 1400)}" target="_blank" rel="noopener">[photo]</a>` : '';
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),3600)}
 async function api(action, p = {}) {
   let j;
@@ -353,7 +364,7 @@ function start(){
 }
 function applySync(d){
   try { sessionStorage.removeItem('fwm_r'); } catch (e) {}
-  me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages; ORD = d.orders; NOTES = d.notes; ADM = d.admin; FS = d.forSale || [];
+  me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages.concat(OUT); // OUT: messages still being saved, so they do not blink away ORD = d.orders; NOTES = d.notes; ADM = d.admin; FS = d.forSale || [];
   const unread = NOTES.filter(n => n.read !== 'yes');
   if (seen) unread.filter(n => !seen.has(n.id)).forEach(n => toast(n.text));
   seen = new Set(NOTES.map(n => n.id));
@@ -432,7 +443,7 @@ function renderPeek(){
   if (!PEEK) { p.hidden = true; return; }
   p.hidden = false;
   p.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong>${esc(PEEK.title)}</strong><button class="ghost" data-act="closepeek" aria-label="Close" style="padding:4px 12px;font-size:20px;line-height:1">&times;</button></div>`
-    + (PEEK.msgs.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)} <small style="color:var(--mute)">${stamp(m.created)}</small></div>`).join('') || 'No messages.');
+    + (PEEK.msgs.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)}${photoLink(m)} <small style="color:var(--mute)">${stamp(m.created)}</small></div>`).join('') || 'No messages.');
   p.scrollIntoView({behavior: 'smooth', block: 'nearest'});
 }
 function renderNotes(){
@@ -488,7 +499,7 @@ function renderAdmin(){
       <button class="red" data-act="delchat" data-id="${c.id}">Delete chat</button></div></div>`).join('') || '<p class="empty">No chats yet.</p>');
   if (admChat) {
     const ms = ADM.messages.filter(m => m.chatId === admChat);
-    html += '<div class="alog">' + (ms.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)} <small style="color:var(--mute)">${stamp(m.created)}</small></div>`).join('') || 'This chat is empty.') + '</div>';
+    html += '<div class="alog">' + (ms.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)}${photoLink(m)} <small style="color:var(--mute)">${stamp(m.created)}</small></div>`).join('') || 'This chat is empty.') + '</div>';
   }
   $('#adm').innerHTML = html;
 }
@@ -610,7 +621,7 @@ function convos(){
   const map = {};
   M.forEach(m => {
     const o = m.from === me.id ? {id: m.to, name: m.toName} : {id: m.from, name: m.fromName};
-    map[o.id] = {...o, last: m.text, at: m.created};
+    map[o.id] = {...o, last: m.text || (m.image ? 'Photo' : ''), at: m.created};
   });
   if (active && !map[active.id]) map[active.id] = {...active, last: '', at: '9999'};
   return Object.values(map).sort((a, b) => String(b.at).localeCompare(String(a.at)));
@@ -626,18 +637,28 @@ function renderChats(){
   if (!active) return;
   $('#ttitle').textContent = active.name;
   const id = cid(me.id, active.id), box = $('#msgs');
-  box.innerHTML = M.filter(m => m.chatId === id).map(m => `<div class="m ${m.from === me.id ? 'me' : ''}">${esc(m.text)}<small class="ts">${stamp(m.created)}</small></div>`).join('');
+  box.innerHTML = M.filter(m => m.chatId === id).map(m => `<div class="m ${m.from === me.id ? 'me' : ''}">${chatImg(m)}${esc(m.text)}<small class="ts">${stamp(m.created)}</small></div>`).join('');
   box.scrollTop = box.scrollHeight;
 }
+$('#attachBtn').onclick = () => $('#mfile').click();
+$('#mfile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { chatPending = await readImage(f); $('#mpvimg').src = chatPending; $('#mpv').hidden = false; }
+  catch (x) { toast(x.message); }
+};
+$('#mpvx').onclick = () => { chatPending = ''; $('#mpv').hidden = true; };
 $('#sendForm').onsubmit = async e => {
   e.preventDefault();
-  const t = $('#mi').value.trim(); if (!t || !active) return;
+  const t = $('#mi').value.trim(), img = chatPending;
+  if ((!t && !img) || !active) return;
   if (me.fct < 1) { toast('Sending a message costs 1 FCT and you have none left.'); return; }
-  $('#mi').value = ''; me.fct -= 1;
-  M.push({id: 'tmp' + Date.now(), chatId: cid(me.id, active.id), from: me.id, fromName: me.name, to: active.id, toName: active.name, text: t, created: new Date().toISOString()});
+  $('#mi').value = ''; chatPending = ''; $('#mpv').hidden = true; me.fct -= 1;
+  const tmp = {id: 'tmp' + Date.now(), chatId: cid(me.id, active.id), from: me.id, fromName: me.name, to: active.id, toName: active.name, text: t, image: img, created: new Date().toISOString()};
+  OUT.push(tmp); M.push(tmp);
   delete sigs.m; paint();
-  try { await api('send', {to: active.id, text: t}); } catch (x) { toast(x.message); }
-  refresh();
+  try { await api('send', {to: active.id, text: t, image: img}); } catch (x) { toast(x.message); }
+  OUT = OUT.filter(x => x !== tmp);
+  try { applySync(await api('sync')); } catch (x) {}
 };
 
 /* ---------- token shop (the passcode is checked on the server and is not stored in this file) ---------- */
