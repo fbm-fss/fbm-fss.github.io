@@ -88,7 +88,6 @@ details.sell summary{cursor:pointer;font-weight:600;color:var(--blue)}
 @media(max-width:700px){.chatwrap{grid-template-columns:1fr}.clist{max-height:170px;overflow:auto}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
-</head>
 <style>
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
 .chips button{background:#fff;border:1.5px solid var(--line);border-radius:99px;padding:6px 14px;cursor:pointer;font-weight:600;color:var(--mute)}
@@ -133,6 +132,7 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
 </style>
+</head>
 <body>
 <div class="awning"></div>
 <div id="loading" hidden role="status" aria-live="polite">
@@ -364,7 +364,13 @@ function start(){
 }
 function applySync(d){
   try { sessionStorage.removeItem('fwm_r'); } catch (e) {}
-  me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages.concat(OUT); // OUT: messages still being saved, so they do not blink away ORD = d.orders; NOTES = d.notes; ADM = d.admin; FS = d.forSale || [];
+  me = d.user;
+  L = Object.fromEntries(d.listings.map(l => [l.id, l]));
+  M = d.messages.concat(OUT); // OUT: messages still being saved, so they do not blink away
+  ORD = d.orders;
+  NOTES = d.notes;
+  ADM = d.admin;
+  FS = d.forSale || [];
   const unread = NOTES.filter(n => n.read !== 'yes');
   if (seen) unread.filter(n => !seen.has(n.id)).forEach(n => toast(n.text));
   seen = new Set(NOTES.map(n => n.id));
