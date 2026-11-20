@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <!--
 SETUP (Google Sheets backend)
-1. Create a NEW Google Sheet (or delete the old Users, Listings, Messages and Sessions tabs, because the columns changed).
+1. Create a NEW Google Sheet (or keep your existing one: the new "avatar" column on Users is added automatically).
 2. Extensions > Apps Script, paste in Code.gs (saved next to this file).
 3. Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone. Authorize (it asks for Sheets and Drive access), then copy the /exec URL.
 4. Paste that URL into API_URL near the bottom of this file, then open the page.
@@ -132,6 +132,22 @@ h2.sub{font-size:22px;margin:28px 0 12px}
 .spin{width:44px;height:44px;border-radius:50%;border:5px solid #dbe2fb;border-top-color:var(--blue);animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
+/* profile pictures */
+.av{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;border-radius:50%;object-fit:cover;background:#dbe2fb;color:var(--ink);border:1.5px solid var(--ink);font:800 14px/1 "Bricolage Grotesque",sans-serif;vertical-align:middle;overflow:hidden}
+.av.sm{width:24px;height:24px;font-size:11px;border-width:1px}
+.av.lg{width:96px;height:96px;font-size:38px;border-width:2.5px}
+.who{display:inline-flex;align-items:center;gap:6px}
+.clist button .who{margin-bottom:2px}
+.item .who{margin-right:2px}
+#hav{display:inline-flex}
+.profbox{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:12px}
+/* photo library */
+details.libbox{margin-top:12px}
+details.libbox summary{cursor:pointer;font-weight:600;font-size:14px;color:var(--blue)}
+#lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:8px}
+#lib button.libpic{margin:0;padding:0;border:3px solid var(--line);background:#eef0f4;border-radius:8px;overflow:hidden;cursor:pointer;aspect-ratio:1}
+#lib button.libpic.on{border-color:var(--blue)}
+#lib img{width:100%;height:100%;object-fit:cover;display:block}
 </style>
 <body>
 <div class="awning"></div>
@@ -163,10 +179,11 @@ h2.sub{font-size:22px;margin:28px 0 12px}
       <button data-v="chats">Messages</button>
       <button data-v="orders">Orders</button>
       <button data-v="tokens">Tokens</button>
+      <button data-v="profile">Profile</button>
       <button data-v="admin" id="navAdmin" hidden>Admin</button>
     </nav>
     <button class="ghost b" id="bell">Alerts</button>
-    <span class="bal"><span class="coin">FWM</span><span id="bal">0</span><span class="coin fct">FCT</span><span id="bal3">0</span><span id="who" style="color:var(--mute);font-weight:400"></span></span>
+    <span class="bal"><span class="coin">FWM</span><span id="bal">0</span><span class="coin fct">FCT</span><span id="bal3">0</span><span id="hav"></span><span id="who" style="color:var(--mute);font-weight:400"></span></span>
     <button class="ghost b" id="out">Sign out</button>
   </header>
   <main>
@@ -190,6 +207,10 @@ h2.sub{font-size:22px;margin:28px 0 12px}
           <label for="d">Description</label><textarea id="d" rows="3" maxlength="500"></textarea>
           <label for="p">Price (FWM)</label><input id="p" type="number" min="1" step="1" required>
           <label for="img">Photo of what it looks like</label><input id="img" type="file" accept="image/*">
+          <details class="libbox" id="libBox" hidden>
+            <summary>Or pick from your photo library</summary>
+            <div id="lib"></div>
+          </details>
           <img id="pv" class="pv" alt="" hidden>
           <p style="color:var(--mute);font-size:14px;margin:12px 0 0">Posting a listing costs 10 FWM.</p>
           <button id="postBtn">Post listing</button>
@@ -253,6 +274,23 @@ h2.sub{font-size:22px;margin:28px 0 12px}
       </div>
     </section>
 
+    <section id="v-profile" hidden>
+      <div class="head"><h2>Your profile</h2></div>
+      <div class="form" style="padding-top:18px">
+        <div class="profbox">
+          <span id="pavBig"></span>
+          <div><strong id="pname" style="font-size:20px"></strong><div style="color:var(--mute);font-size:14px">This is the picture other members see next to your name.</div></div>
+        </div>
+        <label for="avfile">Profile picture</label>
+        <input id="avfile" type="file" accept="image/*">
+        <img id="avpv" class="pv" alt="" hidden>
+        <div class="row" style="margin-top:14px">
+          <button id="avSave" type="button" disabled>Save picture</button>
+          <button id="avRemove" type="button" class="ghost" hidden>Remove picture</button>
+        </div>
+      </div>
+    </section>
+
     <section id="v-admin" hidden>
       <div class="head"><h2>Admin panel</h2></div>
       <div id="adm"></div>
@@ -269,7 +307,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const store = {get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
                set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }};
 let token = store.get('fwm_token'), me = null, L = {}, M = [], ORD = [], NOTES = [], ADM = null;
-let FS = [], PEEK = null, chatPending = '', OUT = [];
+let FS = [], PEEK = null, chatPending = '', OUT = [], LIB = [], AV = {};
+let libPick = '', avPending = '';
 let active = null, timer = null, mode = 'in', cat = 'all', admChat = null, pending = '', seen = null, view = 'market';
 const sigs = {};
 const CATNAME = {information: 'Information', locks: 'Locks', lockers: 'Lockers', other: 'Other'};
@@ -285,6 +324,12 @@ const chatImg = m => !m.image ? '' : m.image.startsWith('data:')
   ? `<img class="mimg" src="${m.image}" alt="Photo">`
   : `<a href="${imgSrc(m.image, 1400)}" target="_blank" rel="noopener"><img class="mimg" src="${imgSrc(m.image)}" alt="Photo" loading="lazy"></a>`;
 const photoLink = m => m.image && !m.image.startsWith('data:') ? ` <a href="${imgSrc(m.image, 1400)}" target="_blank" rel="noopener">[photo]</a>` : '';
+// a person's profile picture, or their first letter when they have none
+function av(id, name, size = ''){
+  const f = AV[id];
+  return f ? `<img class="av ${size}" src="${imgSrc(f, size === 'lg' ? 300 : 120)}" alt="" loading="lazy">`
+           : `<span class="av ${size}" aria-hidden="true">${esc(String(name || '?').trim().charAt(0).toUpperCase() || '?')}</span>`;
+}
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),3600)}
 async function api(action, p = {}) {
   let j;
@@ -350,7 +395,7 @@ $('#authForm').onsubmit = async e => {
   hideLoad(); $('#authBtn').disabled = false;
 };
 function signOut(msg){
-  clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null; PEEK = null; FS = []; $('#peek').hidden = true; $('#us').value = ''; $('#usres').innerHTML = '';
+  clearInterval(timer); token = null; me = null; active = null; seen = null; ADM = null; PEEK = null; FS = []; LIB = []; AV = {}; libPick = ''; avPending = ''; $('#peek').hidden = true; $('#us').value = ''; $('#usres').innerHTML = '';
   Object.keys(sigs).forEach(k => delete sigs[k]);
   store.set('fwm_token', null); setShop(false);
   $('#app').hidden = true; $('#auth').hidden = false; $('#pw').value = '';
@@ -365,6 +410,8 @@ function start(){
 function applySync(d){
   try { sessionStorage.removeItem('fwm_r'); } catch (e) {}
   me = d.user; L = Object.fromEntries(d.listings.map(l => [l.id, l])); M = d.messages.concat(OUT); /* OUT: messages still being saved, so they do not blink away */ ORD = d.orders; NOTES = d.notes; ADM = d.admin; FS = d.forSale || [];
+  LIB = d.library || []; AV = d.avatars || {};
+  if (libPick && LIB.indexOf(libPick) < 0) { libPick = ''; $('#pv').hidden = true; }
   const unread = NOTES.filter(n => n.read !== 'yes');
   if (seen) unread.filter(n => !seen.has(n.id)).forEach(n => toast(n.text));
   seen = new Set(NOTES.map(n => n.id));
@@ -383,7 +430,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && me
 /* ---------- navigation ---------- */
 function go(v){
   view = v;
-  ['market','chats','orders','tokens','admin'].forEach(k => $('#v-'+k).hidden = k !== v);
+  ['market','chats','orders','tokens','profile','admin'].forEach(k => $('#v-'+k).hidden = k !== v);
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => go(b.dataset.v));
@@ -407,8 +454,10 @@ function paint(){
   $('#navAdmin').hidden = !me.admin;
   const unread = NOTES.filter(n => n.read !== 'yes').length;
   $('#bell').textContent = unread ? `Alerts (${unread})` : 'Alerts';
-  region('l', [L, me.id, me.admin, cat], renderListings);
-  region('m', [M.length, M.length ? M[M.length-1].id : '', active && active.id], renderChats);
+  region('av', [AV, me.id, me.name], renderProfile);
+  region('l', [L, AV, me.id, me.admin, cat], renderListings);
+  region('lib', LIB, renderLib);
+  region('m', [M.length, M.length ? M[M.length-1].id : '', active && active.id, AV], renderChats);
   region('o', ORD, renderOrders);
   region('n', NOTES, renderNotes);
   region('fs', FS, renderForSale);
@@ -421,7 +470,7 @@ function renderListings(){
       ${l.image ? `<img src="https://drive.google.com/thumbnail?id=${esc(l.image)}&sz=w600" alt="${esc(l.title)}" loading="lazy">` : '<div class="noimg">No photo</div>'}
       <span class="tag">${esc(CATNAME[l.category] || 'Other')}</span>
       <h3>${esc(l.title)}</h3><p>${esc(l.desc)}</p>
-      <div class="meta"><span class="price">${l.price} FWM</span><span>${esc(l.sellerName)}</span></div>
+      <div class="meta"><span class="price">${l.price} FWM</span><span class="who">${av(l.sellerId, l.sellerName, 'sm')}${esc(l.sellerName)}</span></div>
       ${l.created ? `<small class="meta" style="display:block">Posted on ${new Date(l.created).toLocaleDateString([], {month: 'short', day: 'numeric', year: 'numeric'})}</small>` : ''}
       <div class="row">
         ${l.sellerId === me.id ? '<em class="meta">Your listing</em>'
@@ -429,6 +478,18 @@ function renderListings(){
         ${me.admin ? `<button class="red" style="background:#b3261e" data-act="delist" data-id="${l.id}">Delist</button>` : ''}
       </div>
     </article>`).join('') : '<p class="empty">Nothing here yet. Post the first one.</p>';
+}
+/* photo library: pictures already uploaded with your earlier listings */
+function renderLib(){
+  $('#libBox').hidden = !LIB.length;
+  $('#lib').innerHTML = LIB.map(id => `<button type="button" class="libpic ${id === libPick ? 'on' : ''}" data-act="libpick" data-id="${esc(id)}" aria-label="Use this photo" aria-pressed="${id === libPick}"><img src="${imgSrc(id, 200)}" alt="" loading="lazy"></button>`).join('');
+}
+/* profile page */
+function renderProfile(){
+  $('#hav').innerHTML = av(me.id, me.name, 'sm');
+  $('#pavBig').innerHTML = av(me.id, me.name, 'lg');
+  $('#pname').textContent = me.name;
+  $('#avRemove').hidden = !AV[me.id];
 }
 function renderForSale(){
   $('#forsale').innerHTML = FS.length ? FS.map(c => {
@@ -487,7 +548,7 @@ function renderAdmin(){
   html += '<h2 class="sub">People</h2>' + ADM.users.map(u => {
     const nm = esc(u.name);
     const tk = (sign, k) => `<button class="${sign === '-' ? 'red' : ''}" data-act="tok" data-uid="${u.id}" data-name="${nm}" data-k="${k}" data-sign="${sign}">${sign === '-' ? 'Take' : 'Give'} ${k.toUpperCase()}</button>`;
-    return `<div class="item"><div><strong>${nm}</strong>${u.owner ? ' (owner)' : u.admin ? ' (admin)' : ''}${u.banned ? ' <span class="st reported">banned</span>' : ''}
+    return `<div class="item"><div><span class="who">${av(u.id, u.name, 'sm')}<strong>${nm}</strong></span>${u.owner ? ' (owner)' : u.admin ? ' (admin)' : ''}${u.banned ? ' <span class="st reported">banned</span>' : ''}
       <small>${esc(u.email)}, ${u.fwm} FWM, ${u.fct} FCT</small></div>
       <div class="row">${tk('+', 'fwm')}${tk('+', 'fct')}${tk('-', 'fwm')}${tk('-', 'fct')}
       ${me.owner && !u.owner ? `<button class="ghost" data-act="${u.admin ? 'rmadmin' : 'mkadmin'}" data-uid="${u.id}" data-name="${nm}">${u.admin ? 'Remove admin' : 'Make admin'}</button>` : ''}
@@ -501,7 +562,7 @@ function renderAdmin(){
     const ms = ADM.messages.filter(m => m.chatId === admChat);
     html += '<div class="alog">' + (ms.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)}${photoLink(m)} <small style="color:var(--mute)">${stamp(m.created)}</small></div>`).join('') || 'This chat is empty.') + '</div>';
   }
-  html += '<h2 class="sub">Photos</h2><div class="item"><div><strong>Clean up photos</strong><small>Deletes the photos of sold items, and merges identical pictures into one file. Extra files go to the Drive trash.</small></div><button data-act="dedupe">Clean up</button></div>';
+  html += '<h2 class="sub">Photos</h2><div class="item"><div><strong>Clean up photos</strong><small>Deletes the photos of sold and delisted items, and merges identical pictures into one file. Extra files go to the Drive trash.</small></div><button data-act="dedupe">Clean up</button></div>';
   $('#adm').innerHTML = html;
 }
 
@@ -515,7 +576,15 @@ document.body.addEventListener('click', e => {
       return run('Processing your purchase...', async () => { await api('buy', {id: d.id}); toast('Purchased. The seller has been notified. Message them to arrange delivery.'); });
     }
     case 'msg': { const l = L[d.id]; if (l) { go('chats'); showChat(l.sellerId, l.sellerName); } return; }
-    case 'delist': if (!confirm('Delist this item?')) return; return run('Delisting item...', async () => { await api('delist', {id: d.id}); toast('Delisted.'); });
+    case 'delist': if (!confirm('Delist this item? Its photo will be deleted the next time photos are cleaned up.')) return; return run('Delisting item...', async () => { await api('delist', {id: d.id}); toast('Delisted.'); });
+    case 'libpick': {
+      // choose a photo that was already uploaded (tap it again to un-choose)
+      libPick = libPick === d.id ? '' : d.id;
+      pending = ''; $('#img').value = '';
+      if (libPick) { $('#pv').src = imgSrc(libPick, 400); $('#pv').hidden = false; } else $('#pv').hidden = true;
+      renderLib();
+      return;
+    }
     case 'report': {
       const reason = prompt('What went wrong? The admin will review your report.'); if (!reason) return;
       return run('Sending your report...', async () => { await api('report', {orderId: d.id, reason}); toast('Reported. An admin will review it.'); });
@@ -535,7 +604,7 @@ document.body.addEventListener('click', e => {
     case 'dedupe':
       return run('Cleaning up photos...', async () => {
         const r = await api('cleanImages'), bits = [];
-        if (r.soldRemoved) bits.push(`Deleted ${r.soldRemoved} photo${r.soldRemoved > 1 ? 's' : ''} of sold items.`);
+        if (r.soldRemoved) bits.push(`Deleted ${r.soldRemoved} photo${r.soldRemoved > 1 ? 's' : ''} of sold or delisted items.`);
         if (r.removed) bits.push(`Merged ${r.removed} duplicate photo${r.removed > 1 ? 's' : ''}.`);
         if (!bits.length) bits.push('Nothing to clean up.');
         bits.push(r.done ? 'Everything is checked.' : 'More photos are left to check, so press Clean up again.');
@@ -578,13 +647,21 @@ document.body.addEventListener('click', e => {
 });
 
 /* ---------- listing form with photo ---------- */
-function readImage(file){
+// size: longest side in pixels. square: crop the middle square (used for profile pictures)
+function readImage(file, size = 800, square = false){
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
-      const s = Math.min(1, 800 / Math.max(img.width, img.height)), c = document.createElement('canvas');
-      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const c = document.createElement('canvas'), g = c.getContext('2d');
+      if (square) {
+        const side = Math.min(img.width, img.height), sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+        c.width = c.height = Math.min(size, side);
+        g.drawImage(img, sx, sy, side, side, 0, 0, c.width, c.height);
+      } else {
+        const s = Math.min(1, size / Math.max(img.width, img.height));
+        c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+        g.drawImage(img, 0, 0, c.width, c.height);
+      }
       URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', .82));
     };
     img.onerror = () => rej(new Error('That file is not a readable image.'));
@@ -592,7 +669,7 @@ function readImage(file){
   });
 }
 $('#img').onchange = async e => {
-  pending = ''; $('#pv').hidden = true;
+  pending = ''; libPick = ''; $('#pv').hidden = true; renderLib();
   const f = e.target.files[0]; if (!f) return;
   try { pending = await readImage(f); $('#pv').src = pending; $('#pv').hidden = false; } catch (x) { toast(x.message); e.target.value = ''; }
 };
@@ -600,9 +677,30 @@ $('#sellForm').onsubmit = e => {
   e.preventDefault(); const f = e.target;
   if (me.fwm < 10) { toast('Posting a listing costs 10 FWM and you only have ' + me.fwm + '.'); return; }
   return run(pending ? 'Posting your listing... photos take a little longer.' : 'Posting your listing...', async () => {
-    await api('post', {title: $('#t').value, category: $('#cat').value, desc: $('#d').value, price: $('#p').value, image: pending});
-    f.reset(); pending = ''; $('#pv').hidden = true; f.closest('details').open = false; toast('Listing posted. 10 FWM was used.');
+    await api('post', {title: $('#t').value, category: $('#cat').value, desc: $('#d').value, price: $('#p').value, image: pending, imageId: libPick});
+    f.reset(); pending = ''; libPick = ''; $('#pv').hidden = true; f.closest('details').open = false; $('#libBox').open = false; toast('Listing posted. 10 FWM was used.');
   });
+};
+
+/* ---------- profile picture ---------- */
+$('#avfile').onchange = async e => {
+  avPending = ''; $('#avpv').hidden = true; $('#avSave').disabled = true;
+  const f = e.target.files[0]; if (!f) return;
+  try { avPending = await readImage(f, 320, true); $('#avpv').src = avPending; $('#avpv').hidden = false; $('#avSave').disabled = false; }
+  catch (x) { toast(x.message); e.target.value = ''; }
+};
+$('#avSave').onclick = () => {
+  if (!avPending) return;
+  const img = avPending;
+  return run('Saving your picture...', async () => {
+    await api('setAvatar', {image: img});
+    avPending = ''; $('#avfile').value = ''; $('#avpv').hidden = true; $('#avSave').disabled = true;
+    toast('Profile picture saved.');
+  });
+};
+$('#avRemove').onclick = () => {
+  if (!confirm('Remove your profile picture?')) return;
+  return run('Removing your picture...', async () => { await api('setAvatar', {image: ''}); toast('Profile picture removed.'); });
 };
 
 /* ---------- find people ---------- */
@@ -619,7 +717,7 @@ $('#us').oninput = () => {
       if (seq !== usSeq) return;
       $('#usres').innerHTML = list.length ? list.map(u => {
         const j = new Date(u.joined), when = isNaN(j) ? '' : 'Joined ' + j.toLocaleDateString([], {month: 'short', year: 'numeric'});
-        return `<div class="item" style="margin:8px 0 0"><div><strong>${esc(u.name)}</strong><small>${when}</small></div><button data-act="chatwith" data-id="${u.id}" data-name="${esc(u.name)}">Chat</button></div>`;
+        return `<div class="item" style="margin:8px 0 0"><div><span class="who">${av(u.id, u.name, 'sm')}<strong>${esc(u.name)}</strong></span><small>${when}</small></div><button data-act="chatwith" data-id="${u.id}" data-name="${esc(u.name)}">Chat</button></div>`;
       }).join('') : '<p class="empty">No one found.</p>';
     } catch (x) { if (seq === usSeq) $('#usres').innerHTML = `<p class="empty">${esc(x.message)}</p>`; }
   }, 350);
@@ -640,12 +738,12 @@ function showChat(id, name){ active = {id, name}; delete sigs.m; paint(); }
 function renderChats(){
   const cs = convos();
   $('#clist').innerHTML = cs.length ? cs.map(c => `<button data-id="${c.id}" data-name="${esc(c.name)}" class="${active && c.id === active.id ? 'on' : ''}">
-    <strong>${esc(c.name)}</strong>${c.last ? `<span class="ts">${stamp(c.at)}</span>` : ''}<small>${esc(c.last || 'No messages yet')}</small></button>`).join('')
+    <span class="who">${av(c.id, c.name, 'sm')}<strong>${esc(c.name)}</strong></span>${c.last ? `<span class="ts">${stamp(c.at)}</span>` : ''}<small>${esc(c.last || 'No messages yet')}</small></button>`).join('')
     : '<p class="empty" style="padding:14px">No conversations yet.</p>';
   $('#clist').querySelectorAll('button').forEach(b => b.onclick = () => showChat(b.dataset.id, b.dataset.name));
   $('#nochat').hidden = !!active; $('#thread').hidden = !active;
   if (!active) return;
-  $('#ttitle').textContent = active.name;
+  $('#ttitle').innerHTML = `<span class="who">${av(active.id, active.name)}${esc(active.name)}</span>`;
   const id = cid(me.id, active.id), box = $('#msgs');
   box.innerHTML = M.filter(m => m.chatId === id).map(m => `<div class="m ${m.from === me.id ? 'me' : ''}">${chatImg(m)}${esc(m.text)}<small class="ts">${stamp(m.created)}</small></div>`).join('');
   box.scrollTop = box.scrollHeight;
