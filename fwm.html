@@ -501,7 +501,7 @@ function renderAdmin(){
     const ms = ADM.messages.filter(m => m.chatId === admChat);
     html += '<div class="alog">' + (ms.map(m => `<div><strong>${esc(m.fromName)}:</strong> ${esc(m.text)}${photoLink(m)} <small style="color:var(--mute)">${stamp(m.created)}</small></div>`).join('') || 'This chat is empty.') + '</div>';
   }
-  html += '<h2 class="sub">Photos</h2><div class="item"><div><strong>Duplicate photos</strong><small>Merges identical pictures into one file and deletes the extra copies from Drive.</small></div><button data-act="dedupe">Clean up</button></div>';
+  html += '<h2 class="sub">Photos</h2><div class="item"><div><strong>Clean up photos</strong><small>Deletes the photos of sold items, and merges identical pictures into one file. Extra files go to the Drive trash.</small></div><button data-act="dedupe">Clean up</button></div>';
   $('#adm').innerHTML = html;
 }
 
@@ -533,9 +533,13 @@ document.body.addEventListener('click', e => {
       });
     }
     case 'dedupe':
-      return run('Looking for duplicate photos...', async () => {
-        const r = await api('dedupeImages');
-        toast(`${r.removed ? 'Removed ' + r.removed + ' duplicate photo' + (r.removed > 1 ? 's' : '') + '. ' : 'No duplicates found. '}${r.done ? 'Everything is checked.' : 'More photos are left to check, so press Clean up again.'}`);
+      return run('Cleaning up photos...', async () => {
+        const r = await api('cleanImages'), bits = [];
+        if (r.soldRemoved) bits.push(`Deleted ${r.soldRemoved} photo${r.soldRemoved > 1 ? 's' : ''} of sold items.`);
+        if (r.removed) bits.push(`Merged ${r.removed} duplicate photo${r.removed > 1 ? 's' : ''}.`);
+        if (!bits.length) bits.push('Nothing to clean up.');
+        bits.push(r.done ? 'Everything is checked.' : 'More photos are left to check, so press Clean up again.');
+        toast(bits.join(' '));
       });
     case 'mkadmin': if (!confirm(`Make ${d.name} an admin? They will be able to ban people, delist items, read every chat, and give or take tokens.`)) return; return run('Adding admin...', () => api('addAdmin', {userId: d.uid}));
     case 'rmadmin': if (!confirm(`Remove ${d.name} as an admin?`)) return; return run('Removing admin...', () => api('removeAdmin', {userId: d.uid}));
